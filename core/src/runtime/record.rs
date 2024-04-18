@@ -17,6 +17,7 @@ use crate::runtime::MemoryInitializeFinalizeEvent;
 use crate::runtime::MemoryRecordEnum;
 use crate::stark::MachineRecord;
 use crate::syscall::precompiles::blake3::Blake3CompressInnerEvent;
+use crate::syscall::precompiles::bn254_scalar::FieldArithEvent;
 use crate::syscall::precompiles::edwards::EdDecompressEvent;
 use crate::syscall::precompiles::keccak256::KeccakPermuteEvent;
 use crate::syscall::precompiles::sha256::{ShaCompressEvent, ShaExtendEvent};
@@ -83,6 +84,8 @@ pub struct ExecutionRecord {
     pub bn254_add_events: Vec<ECAddEvent>,
 
     pub bn254_double_events: Vec<ECDoubleEvent>,
+
+    pub bn254_scalar_arith_events: Vec<FieldArithEvent>,
 
     pub k256_decompress_events: Vec<ECDecompressEvent>,
 

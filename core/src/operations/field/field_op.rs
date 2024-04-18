@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use num::{BigUint, Zero};
 use p3_air::AirBuilder;
 use p3_field::PrimeField32;
+use serde::{Deserialize, Serialize};
 use sp1_derive::AlignedBorrow;
 
 use super::params::Limbs;
@@ -12,12 +13,12 @@ use crate::air::Polynomial;
 use crate::air::SP1AirBuilder;
 use crate::utils::ec::field::FieldParameters;
 
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum FieldOperation {
-    Add,
-    Mul,
-    Sub,
-    Div, // We don't constrain that the divisor is non-zero.
+    Add = 0,
+    Sub = 1,
+    Mul = 2,
+    Div = 3, // We don't constrain that the divisor is non-zero.
 }
 
 /// A set of columns to compute `FieldOperation(a, b)` where a, b are field elements.
