@@ -243,6 +243,11 @@ impl MachineRecord for ExecutionRecord {
             "bls12381_decompress_events".to_string(),
             self.bls12381_decompress_events.len(),
         );
+
+        stats.insert(
+            "bn254_scalar_arith_events".to_string(),
+            self.bn254_scalar_arith_events.len(),
+        );
         stats
     }
 

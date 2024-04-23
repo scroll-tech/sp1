@@ -1,3 +1,6 @@
+#![no_main]
+sp1_zkvm::entrypoint!(main);
+
 extern "C" {
     fn syscall_bn254_scalar_arith(pq: *mut u32, op: *const u32);
 }
@@ -20,4 +23,5 @@ fn main() {
     }
 
     assert_eq!(&pq[0..32], &c);
+    println!("done");
 }

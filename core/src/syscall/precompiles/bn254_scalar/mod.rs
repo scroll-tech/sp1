@@ -98,7 +98,7 @@ impl Syscall for Bn254ScalarArithChip {
         let (op_memory_record, op) = rt.mr(op_ptr);
 
         // TODO: why?
-        rt.clk += 1;
+        // rt.clk += 1;
 
         let bn_p = BigUint::from_bytes_le(
             &p.iter()
@@ -122,6 +122,14 @@ impl Syscall for Bn254ScalarArithChip {
             0x11 => ((&bn_p / &bn_q) % modulus, FieldOperation::Div),
             _ => unreachable!("type {} not supported", op),
         };
+        log::trace!(
+            "shard: {}, clk: {}, bn_p: {:?}, bn_q: {:?}, r: {:?}",
+            rt.current_shard(),
+            rt.clk,
+            bn_p,
+            bn_q,
+            r
+        );
 
         let mut result_words = r.to_u32_digits();
         result_words.resize(nw_per_fe, 0);
