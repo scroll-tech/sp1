@@ -21,6 +21,12 @@ pub enum FieldOperation {
     Div = 3, // We don't constrain that the divisor is non-zero.
 }
 
+// impl Into<u32> for FieldOperation {
+//     fn into(self) -> u32 {
+//         self as u32
+//     }
+// }
+
 /// A set of columns to compute `FieldOperation(a, b)` where a, b are field elements.
 /// Right now the number of limbs is assumed to be a constant, although this could be macro-ed
 /// or made generic in the future.

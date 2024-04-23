@@ -82,6 +82,9 @@ pub mod tests {
     pub const BN254_MUL_ELF: &[u8] =
         include_bytes!("../../../tests/bn254-mul/elf/riscv32im-succinct-zkvm-elf");
 
+    pub const BN254_SCALAR_ARITH_ELF: &[u8] =
+        include_bytes!("../../../tests/bn254-scalar-arith/elf/riscv32im-succinct-zkvm-elf");
+
     pub const SECP256K1_MUL_ELF: &[u8] =
         include_bytes!("../../../tests/secp256k1-mul/elf/riscv32im-succinct-zkvm-elf");
 
