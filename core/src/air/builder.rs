@@ -514,7 +514,7 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
         verify_memory_access: EVerify,
     ) where
         EShard: Into<Self::Expr> + Copy,
-        Ea: Into<Self::Expr> + Copy,
+        Ea: Into<Self::Expr> + Clone,
         Eb: Into<Self::Expr> + Copy,
         EVerify: Into<Self::Expr> + Copy,
         M: MemoryCols<Eb>,
@@ -523,7 +523,7 @@ pub trait MemoryAirBuilder: BaseAirBuilder {
             self.eval_memory_access(
                 shard,
                 clk.clone(),
-                initial_addr.into() + Self::Expr::from_canonical_usize(i * 4),
+                initial_addr.clone().into() + Self::Expr::from_canonical_usize(i * 4),
                 access_slice,
                 verify_memory_access,
             );

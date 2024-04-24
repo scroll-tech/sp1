@@ -126,6 +126,7 @@ pub struct ShardingConfig {
     pub bls12381_add_len: usize,
     pub bls12381_double_len: usize,
     pub uint256_mul_len: usize,
+    pub bn254_scalar_arith_len: usize,
 }
 
 impl ShardingConfig {
@@ -156,6 +157,7 @@ impl Default for ShardingConfig {
             bls12381_add_len: shard_size,
             bls12381_double_len: shard_size,
             uint256_mul_len: shard_size,
+            bn254_scalar_arith_len: shard_size,
         }
     }
 }
@@ -289,6 +291,8 @@ impl MachineRecord for ExecutionRecord {
             .append(&mut other.uint256_mul_events);
         self.bls12381_decompress_events
             .append(&mut other.bls12381_decompress_events);
+        self.bn254_scalar_arith_events
+            .append(&mut other.bn254_scalar_arith_events);
 
         // Merge the byte lookups.
         for (shard, events_map) in std::mem::take(&mut other.byte_lookups).into_iter() {
@@ -500,6 +504,15 @@ impl MachineRecord for ExecutionRecord {
             shard
                 .bls12381_double_events
                 .extend_from_slice(bls12381_double_chunk);
+        }
+
+        for (bn254_scalar_arith_chunk, shard) in take(&mut self.bn254_scalar_arith_events)
+            .chunks_mut(config.bn254_scalar_arith_len)
+            .zip(shards.iter_mut())
+        {
+            shard
+                .bn254_scalar_arith_events
+                .extend_from_slice(bn254_scalar_arith_chunk);
         }
 
         // Put the precompile events in the first shard.
