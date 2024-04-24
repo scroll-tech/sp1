@@ -1,5 +1,6 @@
 mod general_field_op;
 
+use num::Zero;
 use std::borrow::{Borrow, BorrowMut};
 
 use crate::{
@@ -15,7 +16,7 @@ use crate::{
             field::{FieldParameters, NumLimbs, NumWords},
             weierstrass::bn254::Bn254ScalarField,
         },
-        limbs_from_prev_access,
+        limbs_from_prev_access, pad_rows,
     },
 };
 use num::BigUint;
@@ -50,6 +51,7 @@ pub struct FieldArithEvent {
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
 pub struct Bn254ScalarArithAssignCols<T> {
+    is_real: T,
     shard: T,
     clk: T,
     op: T,
@@ -96,9 +98,6 @@ impl Syscall for Bn254ScalarArithChip {
 
         let (q_memory_records, q) = rt.mr_slice(pq_ptr + 4 * (nw_per_fe as u32), nw_per_fe);
         let (op_memory_record, op) = rt.mr(op_ptr);
-
-        // TODO: why?
-        // rt.clk += 1;
 
         let bn_p = BigUint::from_bytes_le(
             &p.iter()
@@ -190,6 +189,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarArithChip {
                     .as_slice(),
             );
 
+            cols.is_real = F::one();
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
             cols.pq_ptr = F::from_canonical_u32(event.pq_ptr);
@@ -212,6 +212,16 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarArithChip {
         output.add_byte_lookup_events(new_byte_lookup_events);
 
         // TODO: add padding rows
+        pad_rows(&mut rows, || {
+            let mut row = [F::zero(); NUM_COLS];
+            let cols: &mut Bn254ScalarArithAssignCols<F> = row.as_mut_slice().borrow_mut();
+
+            let zero = BigUint::zero();
+            let op = FieldOperation::Add;
+            cols.eval.populate(&zero, &zero, op);
+
+            row
+        });
 
         RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_COLS)
     }
@@ -230,12 +240,14 @@ impl<F: Field> BaseAir<F> for Bn254ScalarArithChip {
 impl<AB> Air<AB> for Bn254ScalarArithChip
 where
     AB: SP1AirBuilder,
-    AB::Expr: Copy,
+    // AB::Expr: Copy,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let row = main.row_slice(0);
         let row: &Bn254ScalarArithAssignCols<AB::Var> = (*row).borrow();
+
+        builder.assert_bool(row.is_real);
 
         let p: Limbs<<AB as AirBuilder>::Var, <Bn254ScalarField as NumLimbs>::Limbs> =
             limbs_from_prev_access(&row.p_access);
@@ -246,25 +258,27 @@ where
         row.eval.eval(builder, &p, &q, op[0]);
 
         for i in 0..Bn254ScalarField::NB_LIMBS {
-            builder.assert_eq(row.eval.cols.result[i], row.p_access[i / 4].value()[i % 4]);
+            builder
+                .when(row.is_real)
+                .assert_eq(row.eval.cols.result[i], row.p_access[i / 4].value()[i % 4]);
         }
 
         builder.eval_memory_access_slice(
             row.shard,
             row.clk.into(),
-            row.pq_ptr + AB::F::from_canonical_u32(4),
+            row.pq_ptr + AB::F::from_canonical_u32(4 * NUM_WORDS_PER_FE as u32),
             &row.q_access,
-            AB::F::one(),
+            row.is_real,
         );
 
-        builder.eval_memory_access(row.shard, row.clk, row.op_ptr, &row.op_access, AB::F::one());
+        builder.eval_memory_access(row.shard, row.clk, row.op_ptr, &row.op_access, row.is_real);
 
         builder.eval_memory_access_slice(
             row.shard,
             row.clk.into(),
             row.pq_ptr,
             &row.p_access,
-            AB::F::one(),
+            row.is_real,
         );
 
         let syscall_id = AB::F::from_canonical_u32(SyscallCode::BN254_SCALAR_ARITH.syscall_id());
@@ -274,7 +288,7 @@ where
             syscall_id,
             row.pq_ptr,
             row.op_ptr,
-            AB::F::one(),
+            row.is_real,
         );
     }
 }
