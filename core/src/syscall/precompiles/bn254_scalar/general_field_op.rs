@@ -57,9 +57,9 @@ impl<V: Copy, P: FieldParameters> GeneralFieldOpCols<V, P> {
         // div: 1 1
         // add: 0 0
         // sub: 0 1
-        let assigned_op: AB::Expr = AB::Expr::from(AB::F::from_canonical_u8(0x01))
+        let assigned_op: AB::Expr = AB::Expr::from(AB::F::from_canonical_u8(0b01))
             * is_sub_div.clone()
-            + AB::Expr::from(AB::F::from_canonical_u8(0x10)) * is_mul_div.clone();
+            + AB::Expr::from(AB::F::from_canonical_u8(0b10)) * is_mul_div.clone();
         builder.assert_eq(assigned_op, op.into());
 
         let p_a_param: Polynomial<AB::Expr> = (*a).clone().into();

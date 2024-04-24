@@ -33,5 +33,5 @@ extern "C" {
     pub fn syscall_hint_read(ptr: *mut u8, len: usize);
     pub fn sys_alloc_aligned(bytes: usize, align: usize) -> *mut u8;
     pub fn syscall_bls12381_decompress(point: &mut [u8; 96], is_odd: bool);
-    pub fn syscall_bn254_scalar_arith(pq: *mut u32, op: *const u32);
+    pub fn syscall_bn254_scalar_arith(pq: *mut u32, op: u32);
 }

@@ -42,10 +42,8 @@ pub struct FieldArithEvent {
     pub p: Vec<u32>,
     pub q: Vec<u32>,
     pub pq_ptr: u32,
-    pub op_ptr: u32,
     pub p_memory_records: Vec<MemoryWriteRecord>,
     pub q_memory_records: Vec<MemoryReadRecord>,
-    pub op_memory_record: MemoryReadRecord,
 }
 
 #[derive(Debug, Clone, AlignedBorrow)]
@@ -56,10 +54,8 @@ pub struct Bn254ScalarArithAssignCols<T> {
     clk: T,
     op: T,
     pq_ptr: T,
-    op_ptr: T,
     p_access: [MemoryWriteCols<T>; NUM_WORDS_PER_FE],
     q_access: [MemoryReadCols<T>; NUM_WORDS_PER_FE],
-    op_access: MemoryReadCols<T>,
     eval: GeneralFieldOpCols<T, Bn254ScalarField>,
 }
 
@@ -86,10 +82,7 @@ impl Syscall for Bn254ScalarArithChip {
         if pq_ptr % 4 != 0 {
             panic!();
         }
-        let op_ptr = arg2;
-        if op_ptr % 4 != 0 {
-            panic!();
-        }
+        let op = arg2;
 
         let nw_per_fe = <Bn254ScalarField as NumWords>::WordsFieldElement::USIZE;
         debug_assert_eq!(nw_per_fe, NUM_WORDS_PER_FE);
@@ -97,7 +90,6 @@ impl Syscall for Bn254ScalarArithChip {
         let p: Vec<u32> = rt.slice_unsafe(pq_ptr, nw_per_fe);
 
         let (q_memory_records, q) = rt.mr_slice(pq_ptr + 4 * (nw_per_fe as u32), nw_per_fe);
-        let (op_memory_record, op) = rt.mr(op_ptr);
 
         let bn_p = BigUint::from_bytes_le(
             &p.iter()
@@ -113,12 +105,12 @@ impl Syscall for Bn254ScalarArithChip {
         );
 
         let modulus = Bn254ScalarField::modulus();
-        let (r, t) = match op {
+        let (r, op) = match op {
             0x00 => ((&bn_p + &bn_q) % modulus, FieldOperation::Add),
             0x01 => ((&bn_p - &bn_q) % modulus, FieldOperation::Sub),
-            0x10 => ((&bn_p * &bn_q) % modulus, FieldOperation::Mul),
+            0x02 => ((&bn_p * &bn_q) % modulus, FieldOperation::Mul),
             // TODO: how to handle q == 0?
-            0x11 => ((&bn_p / &bn_q) % modulus, FieldOperation::Div),
+            0x03 => ((&bn_p / &bn_q) % modulus, FieldOperation::Div),
             _ => unreachable!("type {} not supported", op),
         };
         log::trace!(
@@ -141,14 +133,12 @@ impl Syscall for Bn254ScalarArithChip {
             .push(FieldArithEvent {
                 shard,
                 clk: start_clk,
-                op: t,
+                op,
                 p,
                 q,
-                op_ptr,
                 pq_ptr,
                 p_memory_records,
                 q_memory_records,
-                op_memory_record,
             });
 
         None
@@ -193,7 +183,6 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarArithChip {
             cols.shard = F::from_canonical_u32(event.shard);
             cols.clk = F::from_canonical_u32(event.clk);
             cols.pq_ptr = F::from_canonical_u32(event.pq_ptr);
-            cols.op_ptr = F::from_canonical_u32(event.op_ptr);
             cols.op = F::from_canonical_u32(event.op as u32);
 
             cols.eval.populate(&p, &q, event.op);
@@ -204,14 +193,11 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarArithChip {
             for i in 0..cols.q_access.len() {
                 cols.q_access[i].populate(event.q_memory_records[i], &mut new_byte_lookup_events);
             }
-            cols.op_access
-                .populate(event.op_memory_record, &mut new_byte_lookup_events);
 
             rows.push(row);
         }
         output.add_byte_lookup_events(new_byte_lookup_events);
 
-        // TODO: add padding rows
         pad_rows(&mut rows, || {
             let mut row = [F::zero(); NUM_COLS];
             let cols: &mut Bn254ScalarArithAssignCols<F> = row.as_mut_slice().borrow_mut();
@@ -253,9 +239,8 @@ where
             limbs_from_prev_access(&row.p_access);
         let q: Limbs<<AB as AirBuilder>::Var, <Bn254ScalarField as NumLimbs>::Limbs> =
             limbs_from_prev_access(&row.q_access);
-        let op = row.op_access.prev_value().0.to_vec();
 
-        row.eval.eval(builder, &p, &q, op[0]);
+        row.eval.eval(builder, &p, &q, row.op);
 
         for i in 0..Bn254ScalarField::NB_LIMBS {
             builder
@@ -271,8 +256,6 @@ where
             row.is_real,
         );
 
-        builder.eval_memory_access(row.shard, row.clk, row.op_ptr, &row.op_access, row.is_real);
-
         builder.eval_memory_access_slice(
             row.shard,
             row.clk.into(),
@@ -287,7 +270,7 @@ where
             row.clk,
             syscall_id,
             row.pq_ptr,
-            row.op_ptr,
+            row.op,
             row.is_real,
         );
     }

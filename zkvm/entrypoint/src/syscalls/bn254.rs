@@ -43,7 +43,7 @@ pub extern "C" fn syscall_bn254_double(p: *mut u32) {
 
 #[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn syscall_bn254_scalar_arith(pq: *mut u32, op: *const u32) {
+pub extern "C" fn syscall_bn254_scalar_arith(pq: *mut u32, op: u32) {
     #[cfg(target_os = "zkvm")]
     unsafe {
         asm!(
