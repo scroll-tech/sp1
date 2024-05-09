@@ -1,0 +1,11 @@
+[workspace]
+[package]
+version = "0.1.0"
+name = "poseidon_bn254-program"
+edition = "2021"
+
+[dependencies]
+sp1-zkvm = { path = "../../../zkvm/entrypoint" }
+hex = "0.4"
+halo2curves = { git = "https://github.com/kunxian-xia/halo2curves.git", branch = "feat/sp1" }
+poseidon_base = { git = "https://github.com/scroll-tech/poseidon-circuit.git", package = "poseidon-base", branch = "feat/sp1" }

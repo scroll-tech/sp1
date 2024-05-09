@@ -276,6 +276,7 @@ where
     }
 }
 
+#[cfg(test)]
 mod tests {
     use crate::{
         runtime::Program,
