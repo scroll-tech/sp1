@@ -5,7 +5,7 @@ use sp1_sdk::{utils, ProverClient, SP1Stdin};
 const ELF: &[u8] = include_bytes!("../../program/elf/riscv32im-succinct-zkvm-elf");
 
 fn main() {
-    utils::setup_tracer();
+    utils::setup_logger();
 
     // Generate proof.
     let mut stdin = SP1Stdin::new();
