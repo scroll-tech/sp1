@@ -3,6 +3,7 @@ pub use crate::air::SP1AirBuilder;
 use crate::air::{MachineAir, SP1_PROOF_NUM_PV_ELTS};
 use crate::memory::{MemoryChipType, MemoryProgramChip};
 use crate::stark::Chip;
+use crate::syscall::precompiles::bn254_scalar::Bn254ScalarMulChip;
 use crate::StarkGenericConfig;
 use p3_field::PrimeField32;
 pub use riscv_chips::*;
@@ -21,7 +22,7 @@ pub(crate) mod riscv_chips {
     pub use crate::memory::MemoryChip;
     pub use crate::program::ProgramChip;
     pub use crate::syscall::precompiles::blake3::Blake3CompressInnerChip;
-    pub use crate::syscall::precompiles::bn254_scalar::Bn254ScalarArithChip;
+    pub use crate::syscall::precompiles::bn254_scalar::Bn254ScalarAddChip;
     pub use crate::syscall::precompiles::edwards::EdAddAssignChip;
     pub use crate::syscall::precompiles::edwards::EdDecompressChip;
     pub use crate::syscall::precompiles::keccak256::KeccakPermuteChip;
@@ -100,8 +101,10 @@ pub enum RiscvAir<F: PrimeField32> {
     Bls12381Double(WeierstrassDoubleAssignChip<SwCurve<Bls12381Parameters>>),
     /// A precompile for uint256 mul.
     Uint256Mul(Uint256MulChip),
-    /// A precompile for bn254 scalar field arithmetic.
-    Bn254ScalarArith(Bn254ScalarArithChip),
+    /// A precompile for bn254 scalar addition.
+    Bn254ScalarAdd(Bn254ScalarAddChip),
+    /// A precompile for bn254 scalar multiplication.
+    Bn254ScalarMul(Bn254ScalarMulChip),
     /// A precompile for decompressing a point on the BLS12-381 curve.
     Bls12381Decompress(WeierstrassDecompressChip<SwCurve<Bls12381Parameters>>),
 }
@@ -151,8 +154,10 @@ impl<F: PrimeField32> RiscvAir<F> {
         chips.push(RiscvAir::Bls12381Double(bls12381_double));
         let uint256_mul = Uint256MulChip::default();
         chips.push(RiscvAir::Uint256Mul(uint256_mul));
-        let bn254_scalar_arith = Bn254ScalarArithChip::new();
-        chips.push(RiscvAir::Bn254ScalarArith(bn254_scalar_arith));
+        let bn254_scalar_add = Bn254ScalarAddChip::new();
+        chips.push(RiscvAir::Bn254ScalarAdd(bn254_scalar_add));
+        let bn254_scalar_mul = Bn254ScalarMulChip::new();
+        chips.push(RiscvAir::Bn254ScalarMul(bn254_scalar_mul));
         let bls12381_decompress = WeierstrassDecompressChip::<SwCurve<Bls12381Parameters>>::new();
         chips.push(RiscvAir::Bls12381Decompress(bls12381_decompress));
         let add = AddSubChip::default();

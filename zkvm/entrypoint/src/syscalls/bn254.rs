@@ -43,14 +43,31 @@ pub extern "C" fn syscall_bn254_double(p: *mut u32) {
 
 #[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn syscall_bn254_scalar_arith(pq: *mut u32, op: u32) {
+pub extern "C" fn syscall_bn254_scalar_add(p: *mut u32, q: *const u32) {
     #[cfg(target_os = "zkvm")]
     unsafe {
         asm!(
             "ecall",
-            in("t0") crate::syscalls::BN254_SCALAR_ARITH,
-            in("a0") pq,
-            in("a1") op,
+            in("t0") crate::syscalls::BN254_SCALAR_ADD,
+            in("a0") p,
+            in("a1") q,
+        );
+    }
+
+    #[cfg(not(target_os = "zkvm"))]
+    unreachable!()
+}
+
+#[allow(unused_variables)]
+#[no_mangle]
+pub extern "C" fn syscall_bn254_scalar_mul(p: *mut u32, q: *const u32) {
+    #[cfg(target_os = "zkvm")]
+    unsafe {
+        asm!(
+            "ecall",
+            in("t0") crate::syscalls::BN254_SCALAR_MUL,
+            in("a0") p,
+            in("a1") q,
         );
     }
 

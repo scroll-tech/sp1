@@ -104,4 +104,8 @@ pub const BLS12381_ADD: u32 = 0x00_01_01_1E;
 /// Executes the `BLS12381_DOUBLE` precompile.
 pub const BLS12381_DOUBLE: u32 = 0x00_00_01_1F;
 
-pub const BN254_SCALAR_ARITH: u32 = 0x00_00_01_20;
+/// Executes the `BN254_SCALAR_ADD` precompile
+pub const BN254_SCALAR_ADD: u32 = 0x00_01_01_20;
+
+/// Executes the `BN254_SCALAR_MUL` precompile
+pub const BN254_SCALAR_MUL: u32 = 0x00_01_01_21;
