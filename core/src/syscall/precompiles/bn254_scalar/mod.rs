@@ -1,9 +1,11 @@
 mod add;
 mod mul;
+mod mac;
 // mod general_field_op;
 
 pub use add::Bn254ScalarAddChip;
 pub use mul::Bn254ScalarMulChip;
+pub use mac::Bn254ScalarMacChip;
 
 use crate::{
     operations::field::{field_op::FieldOperation, params::Limbs},

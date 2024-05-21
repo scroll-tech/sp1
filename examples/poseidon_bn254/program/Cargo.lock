@@ -216,8 +216,7 @@ checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 [[package]]
 name = "ff"
 version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ded41244b729663b1e574f1b4fb731469f69f79c17667b5d776b16cda0479449"
+source = "git+https://github.com/scroll-tech/ff?rev=7e94aa6#7e94aa6726837138b1b8346ec55b6ce6b593dc96"
 dependencies = [
  "bitvec",
  "rand_core",
@@ -272,7 +271,7 @@ dependencies = [
 [[package]]
 name = "halo2curves"
 version = "0.3.3"
-source = "git+https://github.com/kunxian-xia/halo2curves.git?branch=feat/sp1#da9ff1b096e7067659d6c7f8c1f0cb78cf6d13f3"
+source = "git+https://github.com/lightsing/halo2curves.git?branch=feat/sp1#bade656dfc358b3dd587caf1f7756210f4edca6f"
 dependencies = [
  "ff",
  "group",
@@ -635,7 +634,7 @@ dependencies = [
 [[package]]
 name = "poseidon-base"
 version = "0.1.0"
-source = "git+https://github.com/scroll-tech/poseidon-circuit.git?branch=feat/sp1#23620d9cbe2584686e0f6ac8a9be65db2382761f"
+source = "git+https://github.com/scroll-tech/poseidon-circuit.git?branch=feat/sp1#eb4126462778084e0a19df6ef22e8a8dd6fea187"
 dependencies = [
  "bitvec",
  "halo2curves",

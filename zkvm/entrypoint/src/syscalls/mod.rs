@@ -109,3 +109,6 @@ pub const BN254_SCALAR_ADD: u32 = 0x00_01_01_20;
 
 /// Executes the `BN254_SCALAR_MUL` precompile
 pub const BN254_SCALAR_MUL: u32 = 0x00_01_01_21;
+
+/// Executes the `BN254_SCALAR_MAC` precompile
+pub const BN254_SCALAR_MAC: u32 = 0x00_01_01_22;
