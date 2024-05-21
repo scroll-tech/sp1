@@ -272,7 +272,7 @@ dependencies = [
 [[package]]
 name = "halo2curves"
 version = "0.3.3"
-source = "git+https://github.com/kunxian-xia/halo2curves.git?branch=feat/sp1#1b714c346fa61a9c433d06340d9a410b03fbc8c9"
+source = "git+https://github.com/kunxian-xia/halo2curves.git?branch=feat/sp1#da9ff1b096e7067659d6c7f8c1f0cb78cf6d13f3"
 dependencies = [
  "ff",
  "group",
@@ -635,7 +635,7 @@ dependencies = [
 [[package]]
 name = "poseidon-base"
 version = "0.1.0"
-source = "git+https://github.com/scroll-tech/poseidon-circuit.git?branch=feat/sp1#fce99ee35181bdb5e43467637e40b11a4bb43e85"
+source = "git+https://github.com/scroll-tech/poseidon-circuit.git?branch=feat/sp1#23620d9cbe2584686e0f6ac8a9be65db2382761f"
 dependencies = [
  "bitvec",
  "halo2curves",
