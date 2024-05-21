@@ -574,6 +574,10 @@ impl Runtime {
                 let value = (memory_read_value).to_le_bytes()[(addr % 4) as usize];
                 a = ((value as i8) as i32) as u32;
                 memory_store_value = Some(memory_read_value);
+                println!(
+                    "[clk: {}, pc: 0x{:x}] LB: {:?} <- {:x}",
+                    self.state.global_clk, self.state.pc, rd, a
+                );
                 self.rw(rd, a);
             }
             Opcode::LH => {
@@ -586,6 +590,10 @@ impl Runtime {
                 };
                 a = ((value as i16) as i32) as u32;
                 memory_store_value = Some(memory_read_value);
+                println!(
+                    "[clk: {}, pc: 0x{:x}] LH: {:?} <- {:x}",
+                    self.state.global_clk, self.state.pc, rd, a
+                );
                 self.rw(rd, a);
             }
             Opcode::LW => {
@@ -593,6 +601,10 @@ impl Runtime {
                 assert_eq!(addr % 4, 0, "addr is not aligned");
                 a = memory_read_value;
                 memory_store_value = Some(memory_read_value);
+                println!(
+                    "[clk: {}, pc: 0x{:x}] LW: {:?} <- {}",
+                    self.state.global_clk, self.state.pc, rd, a
+                );
                 self.rw(rd, a);
             }
             Opcode::LBU => {
@@ -626,6 +638,10 @@ impl Runtime {
                     _ => unreachable!(),
                 };
                 memory_store_value = Some(value);
+                println!(
+                    "[clk: {}, pc: 0x{:x}] SB 0x{:x} <- 0x{:x}",
+                    self.state.global_clk, pc, addr, value
+                );
                 self.mw_cpu(align(addr), value, MemoryAccessPosition::Memory);
             }
             Opcode::SH => {
@@ -637,6 +653,10 @@ impl Runtime {
                     _ => unreachable!(),
                 };
                 memory_store_value = Some(value);
+                println!(
+                    "[clk: {}, pc: 0x{:x}] SH 0x{:x} <- 0x{:x}",
+                    self.state.global_clk, pc, addr, value
+                );
                 self.mw_cpu(align(addr), value, MemoryAccessPosition::Memory);
             }
             Opcode::SW => {
@@ -644,6 +664,10 @@ impl Runtime {
                 assert_eq!(addr % 4, 0, "addr is not aligned");
                 let value = a;
                 memory_store_value = Some(value);
+                println!(
+                    "[clk: {}, pc: 0x{:x}] SW 0x{:x} <- 0x{:x}",
+                    self.state.global_clk, pc, addr, value
+                );
                 self.mw_cpu(align(addr), value, MemoryAccessPosition::Memory);
             }
 
@@ -719,9 +743,15 @@ impl Runtime {
                 b = self.rr(Register::X10, MemoryAccessPosition::B);
                 let syscall = SyscallCode::from_u32(syscall_id);
 
+                let global_clk = self.state.global_clk;
+
                 let syscall_impl = self.get_syscall(syscall).cloned();
                 let mut precompile_rt = SyscallContext::new(self);
 
+                println!(
+                    "[clk: {}, pc: 0x{:x}] ecall syscall_id=0x{:x}, b: 0x{:x}, c: 0x{:x}",
+                    global_clk, pc, syscall_id, b, c,
+                );
                 let (precompile_next_pc, precompile_cycles, returned_exit_code) =
                     if let Some(syscall_impl) = syscall_impl {
                         // Executing a syscall optionally returns a value to write to the t0 register.
