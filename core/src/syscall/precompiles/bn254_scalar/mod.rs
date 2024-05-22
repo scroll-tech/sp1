@@ -1,15 +1,13 @@
-mod add;
 mod mac;
 mod mul;
 // mod general_field_op;
 
-pub use add::Bn254ScalarAddChip;
 pub use mac::Bn254ScalarMacChip;
 pub use mul::Bn254ScalarMulChip;
 
 use crate::{
     operations::field::{field_op::FieldOperation, params::Limbs},
-    runtime::{MemoryReadRecord, MemoryRecordEnum, MemoryWriteRecord, SyscallContext},
+    runtime::{MemoryReadRecord, MemoryWriteRecord, SyscallContext},
     utils::ec::{
         field::{FieldParameters, NumWords},
         weierstrass::bn254::Bn254ScalarField,
@@ -69,7 +67,6 @@ impl FieldArithMemoryAccess<MemoryWriteRecord> {
 
 #[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum Bn254FieldOperation {
-    Add = 0,
     Mul = 2,
     Mac = 4,
 }
@@ -77,7 +74,6 @@ pub enum Bn254FieldOperation {
 impl Bn254FieldOperation {
     pub const fn to_field_operation(&self) -> FieldOperation {
         match self {
-            Bn254FieldOperation::Add => FieldOperation::Add,
             Bn254FieldOperation::Mul => FieldOperation::Mul,
             Bn254FieldOperation::Mac => panic!("not supported"),
         }
@@ -139,7 +135,6 @@ pub fn create_bn254_scalar_arith_event(
         let bn_arg2 = arg2.value_as_biguint();
 
         let bn_arg1_out = match op {
-            Bn254FieldOperation::Add => (&bn_arg1 + &bn_arg2) % modulus,
             Bn254FieldOperation::Mul => (&bn_arg1 * &bn_arg2) % modulus,
             _ => unimplemented!("not supported"),
         };

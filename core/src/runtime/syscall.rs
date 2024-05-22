@@ -5,9 +5,7 @@ use strum_macros::EnumIter;
 
 use crate::runtime::{Register, Runtime};
 use crate::stark::Blake3CompressInnerChip;
-use crate::syscall::precompiles::bn254_scalar::{
-    Bn254ScalarAddChip, Bn254ScalarMacChip, Bn254ScalarMulChip,
-};
+use crate::syscall::precompiles::bn254_scalar::{Bn254ScalarMacChip, Bn254ScalarMulChip};
 use crate::syscall::precompiles::edwards::EdAddAssignChip;
 use crate::syscall::precompiles::edwards::EdDecompressChip;
 use crate::syscall::precompiles::keccak256::KeccakPermuteChip;
@@ -106,14 +104,11 @@ pub enum SyscallCode {
     /// Executes the `BLS12381_DOUBLE` precompile.
     BLS12381_DOUBLE = 0x00_00_01_1F,
 
-    /// Executes the `BN254_SCALAR_Add` precompile.
-    BN254_SCALAR_ADD = 0x00_01_01_20,
-
     /// Execute the `BN254_SCALAR_MUL` precompile.
-    BN254_SCALAR_MUL = 0x00_01_01_21,
+    BN254_SCALAR_MUL = 0x00_01_01_20,
 
     /// Execute the `BN254_SCALAR_MAC` precompile.
-    BN254_SCALAR_MAC = 0x00_01_01_22,
+    BN254_SCALAR_MAC = 0x00_01_01_21,
 }
 
 impl SyscallCode {
@@ -144,9 +139,8 @@ impl SyscallCode {
             0x00_00_00_F1 => SyscallCode::HINT_READ,
             0x00_00_01_1D => SyscallCode::UINT256_MUL,
             0x00_00_01_1C => SyscallCode::BLS12381_DECOMPRESS,
-            0x00_01_01_20 => SyscallCode::BN254_SCALAR_ADD,
-            0x00_01_01_21 => SyscallCode::BN254_SCALAR_MUL,
-            0x00_01_01_22 => SyscallCode::BN254_SCALAR_MAC,
+            0x00_01_01_20 => SyscallCode::BN254_SCALAR_MUL,
+            0x00_01_01_21 => SyscallCode::BN254_SCALAR_MAC,
             _ => panic!("invalid syscall number: {}", value),
         }
     }
@@ -352,10 +346,6 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Rc<dyn Syscall>> {
     );
     syscall_map.insert(SyscallCode::UINT256_MUL, Rc::new(Uint256MulChip::new()));
     syscall_map.insert(
-        SyscallCode::BN254_SCALAR_ADD,
-        Rc::new(Bn254ScalarAddChip::new()),
-    );
-    syscall_map.insert(
         SyscallCode::BN254_SCALAR_MUL,
         Rc::new(Bn254ScalarMulChip::new()),
     );
@@ -460,11 +450,11 @@ mod tests {
                 SyscallCode::BLS12381_DECOMPRESS => {
                     assert_eq!(code as u32, sp1_zkvm::syscalls::BLS12381_DECOMPRESS)
                 }
-                SyscallCode::BN254_SCALAR_ADD => {
-                    assert_eq!(code as u32, sp1_zkvm::syscalls::BN254_SCALAR_ADD)
-                }
                 SyscallCode::BN254_SCALAR_MUL => {
                     assert_eq!(code as u32, sp1_zkvm::syscalls::BN254_SCALAR_MUL)
+                }
+                SyscallCode::BN254_SCALAR_MAC => {
+                    assert_eq!(code as u32, sp1_zkvm::syscalls::BN254_SCALAR_MAC)
                 }
             }
         }

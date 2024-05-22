@@ -11,7 +11,7 @@ use sp1_derive::AlignedBorrow;
 use crate::{
     air::MachineAir,
     memory::{MemoryCols, MemoryReadCols, MemoryWriteCols},
-    operations::field::field_op::{FieldOpCols, FieldOperation},
+    operations::field::field_op::FieldOpCols,
     runtime::{ExecutionRecord, Program, Syscall, SyscallCode},
     stark::SP1AirBuilder,
     syscall::precompiles::bn254_scalar::Limbs,

@@ -7,7 +7,7 @@ use p3_field::AbstractField;
 use p3_field::{Field, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_derive::AlignedBorrow;
-use typenum::{U4, U8};
+use typenum::U8;
 
 use crate::{
     air::MachineAir,

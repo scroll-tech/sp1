@@ -2,7 +2,6 @@
 sp1_zkvm::entrypoint!(main);
 
 extern "C" {
-    fn syscall_bn254_scalar_add(p: *mut u32, q: *const u32);
     fn syscall_bn254_scalar_mul(p: *mut u32, q: *const u32);
 }
 
