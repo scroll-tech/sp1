@@ -34,7 +34,7 @@ impl FieldArithMemoryAccess<MemoryReadRecord> {
         Self { ptr, memory_records }
     }
 
-    pub fn as_biguint(&self) -> BigUint {
+    pub fn value_as_biguint(&self) -> BigUint {
         BigUint::from_bytes_le(
             &self.memory_records.iter()
                 .flat_map(|word| word.value.to_le_bytes())
@@ -49,10 +49,10 @@ impl FieldArithMemoryAccess<MemoryWriteRecord> {
     }
 
 
-    pub fn as_biguint(&self) -> BigUint {
+    pub fn prev_value_as_biguint(&self) -> BigUint {
         BigUint::from_bytes_le(
             &self.memory_records.iter()
-                .flat_map(|word| word.value.to_le_bytes())
+                .flat_map(|word| word.prev_value.to_le_bytes())
                 .collect::<Vec<u8>>(),
         )
     }
@@ -119,13 +119,13 @@ pub fn create_bn254_scalar_arith_event(
         let a = FieldArithMemoryAccess::read(rt, arg2.memory_records[0].value, nw_per_fe);
         let b = FieldArithMemoryAccess::read(rt, arg2.memory_records[1].value, nw_per_fe);
 
-        let bn_a = a.as_biguint();
-        let bn_b = b.as_biguint();
+        let bn_a = a.value_as_biguint();
+        let bn_b = b.value_as_biguint();
         let bn_arg1_out = (&bn_a * &bn_b + &bn_arg1) % modulus;
 
         (Some(a), Some(b), bn_arg1_out)
     } else {
-        let bn_arg2 = arg2.as_biguint();
+        let bn_arg2 = arg2.value_as_biguint();
 
         let bn_arg1_out = match op {
             Bn254FieldOperation::Add => (&bn_arg1 + &bn_arg2) % modulus,

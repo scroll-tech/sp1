@@ -93,9 +93,9 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
             let mut row = [F::zero(); NUM_COLS];
             let cols: &mut Bn254ScalarMacCols<F> = row.as_mut_slice().borrow_mut();
 
-            let arg1 = event.arg1.as_biguint();
-            let a = event.a.as_ref().unwrap().as_biguint();
-            let b = event.b.as_ref().unwrap().as_biguint();
+            let arg1 = event.arg1.prev_value_as_biguint();
+            let a = event.a.as_ref().unwrap().value_as_biguint();
+            let b = event.b.as_ref().unwrap().value_as_biguint();
 
             cols.is_real = F::one();
             cols.shard = F::from_canonical_u32(event.shard);

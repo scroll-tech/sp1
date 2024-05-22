@@ -89,8 +89,8 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
             let mut row = [F::zero(); NUM_COLS];
             let cols: &mut Bn254ScalarMulCols<F> = row.as_mut_slice().borrow_mut();
 
-            let p = event.arg1.as_biguint();
-            let q = event.arg2.as_biguint();
+            let p = event.arg1.prev_value_as_biguint();
+            let q = event.arg2.value_as_biguint();
 
             cols.is_real = F::one();
             cols.shard = F::from_canonical_u32(event.shard);
