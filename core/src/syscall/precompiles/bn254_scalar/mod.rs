@@ -1,15 +1,15 @@
 mod add;
-mod mul;
 mod mac;
+mod mul;
 // mod general_field_op;
 
 pub use add::Bn254ScalarAddChip;
-pub use mul::Bn254ScalarMulChip;
 pub use mac::Bn254ScalarMacChip;
+pub use mul::Bn254ScalarMulChip;
 
 use crate::{
     operations::field::{field_op::FieldOperation, params::Limbs},
-    runtime::{MemoryReadRecord, MemoryWriteRecord, SyscallContext, MemoryRecordEnum},
+    runtime::{MemoryReadRecord, MemoryRecordEnum, MemoryWriteRecord, SyscallContext},
     utils::ec::{
         field::{FieldParameters, NumWords},
         weierstrass::bn254::Bn254ScalarField,
@@ -25,18 +25,23 @@ pub(crate) const NUM_WORDS_PER_FE: usize = 8;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FieldArithMemoryAccess<T> {
     pub ptr: u32,
-    pub memory_records: Vec<T>
+    pub memory_records: Vec<T>,
 }
 
 impl FieldArithMemoryAccess<MemoryReadRecord> {
     pub fn read(rt: &mut SyscallContext, ptr: u32, len: usize) -> Self {
         let (memory_records, _) = rt.mr_slice(ptr, len);
-        Self { ptr, memory_records }
+        Self {
+            ptr,
+            memory_records,
+        }
     }
 
     pub fn value_as_biguint(&self) -> BigUint {
         BigUint::from_bytes_le(
-            &self.memory_records.iter()
+            &self
+                .memory_records
+                .iter()
                 .flat_map(|word| word.value.to_le_bytes())
                 .collect::<Vec<u8>>(),
         )
@@ -45,13 +50,17 @@ impl FieldArithMemoryAccess<MemoryReadRecord> {
 
 impl FieldArithMemoryAccess<MemoryWriteRecord> {
     pub fn write(rt: &mut SyscallContext, ptr: u32, values: &[u32]) -> Self {
-        Self { ptr, memory_records: rt.mw_slice(ptr, &values) }
+        Self {
+            ptr,
+            memory_records: rt.mw_slice(ptr, &values),
+        }
     }
-
 
     pub fn prev_value_as_biguint(&self) -> BigUint {
         BigUint::from_bytes_le(
-            &self.memory_records.iter()
+            &self
+                .memory_records
+                .iter()
                 .flat_map(|word| word.prev_value.to_le_bytes())
                 .collect::<Vec<u8>>(),
         )
@@ -83,7 +92,7 @@ pub struct Bn254FieldArithEvent {
     pub arg1: FieldArithMemoryAccess<MemoryWriteRecord>,
     pub arg2: FieldArithMemoryAccess<MemoryReadRecord>,
     pub a: Option<FieldArithMemoryAccess<MemoryReadRecord>>,
-    pub b: Option<FieldArithMemoryAccess<MemoryReadRecord>>
+    pub b: Option<FieldArithMemoryAccess<MemoryReadRecord>>,
 }
 
 pub fn create_bn254_scalar_arith_event(
@@ -105,11 +114,13 @@ pub fn create_bn254_scalar_arith_event(
     let arg1: Vec<u32> = rt.slice_unsafe(p_ptr, nw_per_fe);
     let arg2 = match op {
         Bn254FieldOperation::Mac => FieldArithMemoryAccess::read(rt, arg2, 2),
-        _ => FieldArithMemoryAccess::read(rt, arg2, nw_per_fe)
+        _ => FieldArithMemoryAccess::read(rt, arg2, nw_per_fe),
     };
 
     let bn_arg1 = BigUint::from_bytes_le(
-        &arg1.iter().copied()
+        &arg1
+            .iter()
+            .copied()
             .flat_map(|word| word.to_le_bytes())
             .collect::<Vec<u8>>(),
     );
@@ -159,7 +170,7 @@ pub fn create_bn254_scalar_arith_event(
         arg1,
         arg2,
         a,
-        b
+        b,
     }
 }
 

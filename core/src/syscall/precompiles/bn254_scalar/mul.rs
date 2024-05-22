@@ -24,7 +24,7 @@ use crate::{
     },
 };
 
-use super::{create_bn254_scalar_arith_event, NUM_WORDS_PER_FE, Bn254FieldOperation};
+use super::{create_bn254_scalar_arith_event, Bn254FieldOperation, NUM_WORDS_PER_FE};
 
 const NUM_COLS: usize = core::mem::size_of::<Bn254ScalarMulCols<u8>>();
 const OP: Bn254FieldOperation = Bn254FieldOperation::Mul;
@@ -101,10 +101,12 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
             cols.eval.populate(&p, &q, OP.to_field_operation());
 
             for i in 0..cols.p_access.len() {
-                cols.p_access[i].populate(event.arg1.memory_records[i], &mut new_byte_lookup_events);
+                cols.p_access[i]
+                    .populate(event.arg1.memory_records[i], &mut new_byte_lookup_events);
             }
             for i in 0..cols.q_access.len() {
-                cols.q_access[i].populate(event.arg2.memory_records[i], &mut new_byte_lookup_events);
+                cols.q_access[i]
+                    .populate(event.arg2.memory_records[i], &mut new_byte_lookup_events);
             }
 
             rows.push(row);

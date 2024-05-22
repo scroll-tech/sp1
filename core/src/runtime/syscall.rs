@@ -5,7 +5,9 @@ use strum_macros::EnumIter;
 
 use crate::runtime::{Register, Runtime};
 use crate::stark::Blake3CompressInnerChip;
-use crate::syscall::precompiles::bn254_scalar::{Bn254ScalarAddChip, Bn254ScalarMulChip, Bn254ScalarMacChip};
+use crate::syscall::precompiles::bn254_scalar::{
+    Bn254ScalarAddChip, Bn254ScalarMacChip, Bn254ScalarMulChip,
+};
 use crate::syscall::precompiles::edwards::EdAddAssignChip;
 use crate::syscall::precompiles::edwards::EdDecompressChip;
 use crate::syscall::precompiles::keccak256::KeccakPermuteChip;

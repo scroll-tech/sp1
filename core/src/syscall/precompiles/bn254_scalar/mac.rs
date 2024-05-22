@@ -6,8 +6,8 @@ use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::AbstractField;
 use p3_field::{Field, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use typenum::U2;
 use sp1_derive::AlignedBorrow;
+use typenum::{U4, U8};
 
 use crate::{
     air::MachineAir,
@@ -25,7 +25,7 @@ use crate::{
     },
 };
 
-use super::{create_bn254_scalar_arith_event, NUM_WORDS_PER_FE, Bn254FieldOperation};
+use super::{create_bn254_scalar_arith_event, Bn254FieldOperation, NUM_WORDS_PER_FE};
 
 const NUM_COLS: usize = core::mem::size_of::<Bn254ScalarMacCols<u8>>();
 const OP: Bn254FieldOperation = Bn254FieldOperation::Mac;
@@ -107,16 +107,24 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
             cols.add_eval.populate(&arg1, &mul, FieldOperation::Add);
 
             for i in 0..cols.arg1_access.len() {
-                cols.arg1_access[i].populate(event.arg1.memory_records[i], &mut new_byte_lookup_events);
+                cols.arg1_access[i]
+                    .populate(event.arg1.memory_records[i], &mut new_byte_lookup_events);
             }
             for i in 0..cols.arg2_access.len() {
-                cols.arg2_access[i].populate(event.arg2.memory_records[i], &mut new_byte_lookup_events);
+                cols.arg2_access[i]
+                    .populate(event.arg2.memory_records[i], &mut new_byte_lookup_events);
             }
             for i in 0..cols.a_access.len() {
-                cols.a_access[i].populate(event.a.as_ref().unwrap().memory_records[i], &mut new_byte_lookup_events);
+                cols.a_access[i].populate(
+                    event.a.as_ref().unwrap().memory_records[i],
+                    &mut new_byte_lookup_events,
+                );
             }
             for i in 0..cols.b_access.len() {
-                cols.b_access[i].populate(event.b.as_ref().unwrap().memory_records[i], &mut new_byte_lookup_events);
+                cols.b_access[i].populate(
+                    event.b.as_ref().unwrap().memory_records[i],
+                    &mut new_byte_lookup_events,
+                );
             }
 
             rows.push(row);
@@ -166,19 +174,21 @@ where
 
         let arg1: Limbs<<AB as AirBuilder>::Var, <Bn254ScalarField as NumLimbs>::Limbs> =
             limbs_from_prev_access(&row.arg1_access);
-        let arg2: Limbs<<AB as AirBuilder>::Var, U2> = limbs_from_prev_access(&row.arg2_access);
+        let arg2: Limbs<<AB as AirBuilder>::Var, U8> = limbs_from_prev_access(&row.arg2_access);
         let a: Limbs<<AB as AirBuilder>::Var, <Bn254ScalarField as NumLimbs>::Limbs> =
             limbs_from_prev_access(&row.a_access);
         let b: Limbs<<AB as AirBuilder>::Var, <Bn254ScalarField as NumLimbs>::Limbs> =
             limbs_from_prev_access(&row.b_access);
 
         row.mul_eval.eval(builder, &a, &b, FieldOperation::Mul);
-        row.add_eval.eval(builder, &arg1, &row.mul_eval.result, FieldOperation::Add);
+        row.add_eval
+            .eval(builder, &arg1, &row.mul_eval.result, FieldOperation::Add);
 
         for i in 0..Bn254ScalarField::NB_LIMBS {
-            builder
-                .when(row.is_real)
-                .assert_eq(row.add_eval.result[i], row.arg1_access[i / 4].value()[i % 4]);
+            builder.when(row.is_real).assert_eq(
+                row.add_eval.result[i],
+                row.arg1_access[i / 4].value()[i % 4],
+            );
         }
 
         builder.eval_memory_access_slice(
@@ -197,10 +207,28 @@ where
             row.is_real,
         );
 
+        let a_ptr = arg2.0[0..4]
+            .iter()
+            .rev()
+            .cloned()
+            .map(|v| v.into())
+            .fold(AB::Expr::zero(), |acc, b| {
+                acc * AB::Expr::from_canonical_u16(0x100) + b
+            });
+
+        let b_ptr = arg2.0[4..8]
+            .iter()
+            .rev()
+            .cloned()
+            .map(|v| v.into())
+            .fold(AB::Expr::zero(), |acc, b| {
+                acc * AB::Expr::from_canonical_u16(0x100) + b
+            });
+
         builder.eval_memory_access_slice(
             row.shard,
             row.clk.into(),
-            arg2[0],
+            a_ptr,
             &row.a_access,
             row.is_real,
         );
@@ -208,7 +236,7 @@ where
         builder.eval_memory_access_slice(
             row.shard,
             row.clk.into(),
-            arg2[0],
+            b_ptr,
             &row.b_access,
             row.is_real,
         );
