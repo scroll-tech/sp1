@@ -5,6 +5,8 @@ mod ed25519;
 mod halt;
 mod io;
 mod keccak_permute;
+#[cfg(feature = "debug-helper")]
+mod marker;
 mod memory;
 mod secp256k1;
 mod sha_compress;
@@ -109,3 +111,11 @@ pub const BN254_SCALAR_MUL: u32 = 0x00_01_01_20;
 
 /// Executes the `BN254_SCALAR_MAC` precompile
 pub const BN254_SCALAR_MAC: u32 = 0x00_01_01_21;
+
+/// Marker of enter a block
+#[cfg(feature = "debug-helper")]
+pub const MARKER_IN: u32 = 0xFF_FF_FF_FF;
+
+/// Marker of exit a block
+#[cfg(feature = "debug-helper")]
+pub const MARKER_OUT: u32 = 0xEE_EE_EE_EE;

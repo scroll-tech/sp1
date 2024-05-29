@@ -106,6 +106,9 @@ pub enum RiscvAir<F: PrimeField32> {
     Bn254ScalarMac(Bn254ScalarMacChip),
     /// A precompile for decompressing a point on the BLS12-381 curve.
     Bls12381Decompress(WeierstrassDecompressChip<SwCurve<Bls12381Parameters>>),
+
+    #[cfg(feature = "debug-helper")]
+    SyscallMarker(crate::syscall::SyscallMarkerChip),
 }
 
 impl<F: PrimeField32> RiscvAir<F> {
@@ -181,6 +184,11 @@ impl<F: PrimeField32> RiscvAir<F> {
         chips.push(RiscvAir::ProgramMemory(program_memory_init));
         let byte = ByteChip::default();
         chips.push(RiscvAir::ByteLookup(byte));
+
+        #[cfg(feature = "debug-helper")]
+        chips.push(RiscvAir::SyscallMarker(
+            crate::syscall::SyscallMarkerChip::new_in(),
+        ));
 
         chips
     }

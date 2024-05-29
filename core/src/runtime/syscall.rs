@@ -109,6 +109,14 @@ pub enum SyscallCode {
 
     /// Execute the `BN254_SCALAR_MAC` precompile.
     BN254_SCALAR_MAC = 0x00_01_01_21,
+
+    /// Marker for the start of interest
+    #[cfg(feature = "debug-helper")]
+    MARKER_IN = 0xFF_FF_FF_FF,
+
+    /// Marker for the end of interest
+    #[cfg(feature = "debug-helper")]
+    MARKER_OUT = 0xEE_EE_EE_EE,
 }
 
 impl SyscallCode {
@@ -141,6 +149,10 @@ impl SyscallCode {
             0x00_00_01_1C => SyscallCode::BLS12381_DECOMPRESS,
             0x00_01_01_20 => SyscallCode::BN254_SCALAR_MUL,
             0x00_01_01_21 => SyscallCode::BN254_SCALAR_MAC,
+            #[cfg(feature = "debug-helper")]
+            0xFF_FF_FF_FF => SyscallCode::MARKER_IN,
+            #[cfg(feature = "debug-helper")]
+            0xEE_EE_EE_EE => SyscallCode::MARKER_OUT,
             _ => panic!("invalid syscall number: {}", value),
         }
     }
@@ -352,6 +364,17 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Rc<dyn Syscall>> {
     syscall_map.insert(
         SyscallCode::BN254_SCALAR_MAC,
         Rc::new(Bn254ScalarMacChip::new()),
+    );
+
+    #[cfg(feature = "debug-helper")]
+    syscall_map.insert(
+        SyscallCode::MARKER_IN,
+        Rc::new(crate::syscall::SyscallMarkerChip::new_in()),
+    );
+    #[cfg(feature = "debug-helper")]
+    syscall_map.insert(
+        SyscallCode::MARKER_OUT,
+        Rc::new(crate::syscall::SyscallMarkerChip::new_out()),
     );
 
     syscall_map

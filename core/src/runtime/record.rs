@@ -103,6 +103,9 @@ pub struct ExecutionRecord {
 
     pub bls12381_decompress_events: Vec<ECDecompressEvent>,
 
+    #[cfg(feature = "debug-helper")]
+    pub syscall_marker_events: Vec<crate::syscall::SyscallMarkerEvent>,
+
     /// The public values.
     pub public_values: PublicValues<u32, u32>,
 }
