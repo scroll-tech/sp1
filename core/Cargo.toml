@@ -66,6 +66,7 @@ sp1-zkvm = { path = "../zkvm/entrypoint" }
 [features]
 debug = []
 neon = ["p3-blake3/neon"]
+debug-helper = []
 
 [[bench]]
 harness = false

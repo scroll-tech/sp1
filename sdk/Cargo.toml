@@ -36,3 +36,4 @@ sha2 = "0.10.8"
 
 [features]
 neon = ["sp1-core/neon"]
+debug-helper = ["sp1-core/debug-helper"]

@@ -114,8 +114,8 @@ pub const BN254_SCALAR_MAC: u32 = 0x00_01_01_21;
 
 /// Marker of enter a block
 #[cfg(feature = "debug-helper")]
-pub const MARKER_IN: u32 = 0xFF_FF_FF_FF;
+pub const MARKER_IN: u32 = 0x00_00_00_FE;
 
 /// Marker of exit a block
 #[cfg(feature = "debug-helper")]
-pub const MARKER_OUT: u32 = 0xEE_EE_EE_EE;
+pub const MARKER_OUT: u32 = 0x00_00_00_FF;
