@@ -367,7 +367,6 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Rc<dyn Syscall>> {
     );
 
     #[cfg(feature = "debug-helper")]
-    #[cfg(feature s= "debug-helper")]
     syscall_map.insert(
         SyscallCode::MARKER_IN,
         Rc::new(crate::syscall::SyscallMarkerChip::new_in()),
