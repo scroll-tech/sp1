@@ -24,6 +24,7 @@ use crate::syscall::precompiles::sha256::{ShaCompressEvent, ShaExtendEvent};
 use crate::syscall::precompiles::uint256::Uint256MulEvent;
 use crate::syscall::precompiles::ECDecompressEvent;
 use crate::syscall::precompiles::{ECAddEvent, ECDoubleEvent};
+use crate::syscall::MemCopyEvent;
 use crate::utils::env;
 
 /// A record of the execution of a program. Contains event data for everything that happened during
@@ -102,6 +103,8 @@ pub struct ExecutionRecord {
     pub memory_finalize_events: Vec<MemoryInitializeFinalizeEvent>,
 
     pub bls12381_decompress_events: Vec<ECDecompressEvent>,
+
+    pub memcpy_events: HashMap<usize, Vec<MemCopyEvent>>,
 
     /// The public values.
     pub public_values: PublicValues<u32, u32>,

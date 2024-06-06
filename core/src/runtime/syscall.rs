@@ -15,8 +15,9 @@ use crate::syscall::precompiles::weierstrass::WeierstrassAddAssignChip;
 use crate::syscall::precompiles::weierstrass::WeierstrassDecompressChip;
 use crate::syscall::precompiles::weierstrass::WeierstrassDoubleAssignChip;
 use crate::syscall::{
-    SyscallCommit, SyscallCommitDeferred, SyscallEnterUnconstrained, SyscallExitUnconstrained,
-    SyscallHalt, SyscallHintLen, SyscallHintRead, SyscallVerifySP1Proof, SyscallWrite,
+    MemCopyChip, SyscallCommit, SyscallCommitDeferred, SyscallEnterUnconstrained,
+    SyscallExitUnconstrained, SyscallHalt, SyscallHintLen, SyscallHintRead, SyscallVerifySP1Proof,
+    SyscallWrite,
 };
 use crate::utils::ec::edwards::ed25519::{Ed25519, Ed25519Parameters};
 use crate::utils::ec::weierstrass::bls12_381::Bls12381;
@@ -109,6 +110,12 @@ pub enum SyscallCode {
 
     /// Execute the `BN254_SCALAR_MAC` precompile.
     BN254_SCALAR_MAC = 0x00_01_01_21,
+
+    /// Execute the `MEMCPY_32` precompile.
+    MEMCPY_32 = 0x00_00_01_30,
+
+    /// Execute the `MEMCPY_64` precompile.
+    MEMCPY_64 = 0x00_00_01_31,
 }
 
 impl SyscallCode {
@@ -141,6 +148,8 @@ impl SyscallCode {
             0x00_00_01_1C => SyscallCode::BLS12381_DECOMPRESS,
             0x00_01_01_20 => SyscallCode::BN254_SCALAR_MUL,
             0x00_01_01_21 => SyscallCode::BN254_SCALAR_MAC,
+            0x00_00_01_30 => SyscallCode::MEMCPY_32,
+            0x00_00_01_31 => SyscallCode::MEMCPY_64,
             _ => panic!("invalid syscall number: {}", value),
         }
     }
@@ -353,6 +362,9 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Rc<dyn Syscall>> {
         SyscallCode::BN254_SCALAR_MAC,
         Rc::new(Bn254ScalarMacChip::new()),
     );
+
+    syscall_map.insert(SyscallCode::MEMCPY_32, Rc::new(MemCopyChip::<8>::new()));
+    syscall_map.insert(SyscallCode::MEMCPY_64, Rc::new(MemCopyChip::<16>::new()));
 
     syscall_map
 }
