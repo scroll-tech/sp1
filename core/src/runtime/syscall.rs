@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use strum_macros::EnumIter;
+use typenum::{U16, U32, U64, U8};
 
 use crate::runtime::{Register, Runtime};
 use crate::stark::Blake3CompressInnerChip;
@@ -363,8 +364,14 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Rc<dyn Syscall>> {
         Rc::new(Bn254ScalarMacChip::new()),
     );
 
-    syscall_map.insert(SyscallCode::MEMCPY_32, Rc::new(MemCopyChip::<8>::new()));
-    syscall_map.insert(SyscallCode::MEMCPY_64, Rc::new(MemCopyChip::<16>::new()));
+    syscall_map.insert(
+        SyscallCode::MEMCPY_32,
+        Rc::new(MemCopyChip::<U8, U32>::new()),
+    );
+    syscall_map.insert(
+        SyscallCode::MEMCPY_64,
+        Rc::new(MemCopyChip::<U16, U64>::new()),
+    );
 
     syscall_map
 }

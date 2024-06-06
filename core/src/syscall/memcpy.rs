@@ -1,12 +1,16 @@
+use generic_array::{ArrayLength, GenericArray};
 use std::borrow::{Borrow, BorrowMut};
+use std::marker::PhantomData;
 
-use p3_air::{Air, BaseAir};
+use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::AbstractField;
 use p3_field::{Field, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use serde::{Deserialize, Serialize};
 use sp1_derive::AlignedBorrow;
 
+use crate::operations::field::params::Limbs;
+use crate::utils::{limbs_from_access, limbs_from_prev_access};
 use crate::{
     air::MachineAir,
     memory::{MemoryReadCols, MemoryWriteCols},
@@ -28,38 +32,49 @@ pub struct MemCopyEvent {
 
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
-pub struct MemCopyCols<T, const NUM_WORDS: usize> {
+pub struct MemCopyCols<T, NumWords: ArrayLength + Sync> {
     is_real: T,
     shard: T,
     clk: T,
     src_ptr: T,
     dst_ptr: T,
-    src_access: [MemoryReadCols<T>; NUM_WORDS],
-    dst_access: [MemoryWriteCols<T>; NUM_WORDS],
+    src_access: GenericArray<MemoryReadCols<T>, NumWords>,
+    dst_access: GenericArray<MemoryWriteCols<T>, NumWords>,
 }
 
-pub struct MemCopyChip<const NUM_WORDS: usize>;
+pub struct MemCopyChip<NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sync> {
+    _marker: PhantomData<(NumWords, NumBytes)>,
+}
 
-impl<const NUM_WORDS: usize> MemCopyChip<NUM_WORDS> {
-    const NUM_COLS: usize = core::mem::size_of::<MemCopyCols<u8, NUM_WORDS>>();
+impl<NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sync> MemCopyChip<NumWords, NumBytes> {
+    const NUM_COLS: usize = core::mem::size_of::<MemCopyCols<u8, NumWords>>();
 
     pub fn new() -> Self {
-        println!("MemCopyChip<{NUM_WORDS}> NUM_COLS = {}", Self::NUM_COLS);
-        Self
+        println!(
+            "MemCopyChip<{}> NUM_COLS = {}",
+            NumWords::USIZE,
+            Self::NUM_COLS
+        );
+        assert_eq!(NumWords::USIZE * 4, NumBytes::USIZE);
+        Self {
+            _marker: PhantomData,
+        }
     }
 
     pub fn syscall_id() -> u32 {
-        match NUM_WORDS {
-            8 => SyscallCode::MEMCPY_32.syscall_id(),
-            16 => SyscallCode::MEMCPY_64.syscall_id(),
+        match NumBytes::USIZE {
+            32 => SyscallCode::MEMCPY_32.syscall_id(),
+            64 => SyscallCode::MEMCPY_64.syscall_id(),
             _ => unreachable!(),
         }
     }
 }
 
-impl<const NUM_WORDS: usize> Syscall for MemCopyChip<NUM_WORDS> {
+impl<NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sync> Syscall
+    for MemCopyChip<NumWords, NumBytes>
+{
     fn execute(&self, ctx: &mut crate::runtime::SyscallContext, src: u32, dst: u32) -> Option<u32> {
-        let (read, read_bytes) = ctx.mr_slice(src, NUM_WORDS);
+        let (read, read_bytes) = ctx.mr_slice(src, NumWords::USIZE);
         let write = ctx.mw_slice(dst, &read_bytes);
 
         let event = MemCopyEvent {
@@ -72,7 +87,7 @@ impl<const NUM_WORDS: usize> Syscall for MemCopyChip<NUM_WORDS> {
         };
         ctx.record_mut()
             .memcpy_events
-            .entry(NUM_WORDS)
+            .entry(NumWords::USIZE)
             .or_default()
             .push(event);
 
@@ -80,7 +95,8 @@ impl<const NUM_WORDS: usize> Syscall for MemCopyChip<NUM_WORDS> {
     }
 }
 
-impl<F: PrimeField32, const NUM_WORDS: usize> MachineAir<F> for MemCopyChip<NUM_WORDS>
+impl<F: PrimeField32, NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sync> MachineAir<F>
+    for MemCopyChip<NumWords, NumBytes>
 where
     [(); Self::NUM_COLS]:,
 {
@@ -89,16 +105,16 @@ where
     type Program = Program;
 
     fn name(&self) -> String {
-        format!("MemCopy{}Chip", NUM_WORDS)
+        format!("MemCopy{}Chip", NumWords::USIZE)
     }
 
     fn generate_trace(&self, input: &Self::Record, output: &mut Self::Record) -> RowMajorMatrix<F> {
         let mut rows = vec![];
         let mut new_byte_lookup_events = vec![];
 
-        for event in input.memcpy_events.get(&NUM_WORDS).unwrap_or(&vec![]) {
+        for event in input.memcpy_events.get(&NumWords::USIZE).unwrap_or(&vec![]) {
             let mut row = [F::zero(); Self::NUM_COLS];
-            let cols: &mut MemCopyCols<F, NUM_WORDS> = row.as_mut_slice().borrow_mut();
+            let cols: &mut MemCopyCols<F, NumWords> = row.as_mut_slice().borrow_mut();
 
             cols.is_real = F::one();
             cols.shard = F::from_canonical_u32(event.shard);
@@ -106,10 +122,10 @@ where
             cols.src_ptr = F::from_canonical_u32(event.src_ptr);
             cols.dst_ptr = F::from_canonical_u32(event.dst_ptr);
 
-            for i in 0..NUM_WORDS {
+            for i in 0..NumWords::USIZE {
                 cols.src_access[i].populate(event.src_access[i], &mut new_byte_lookup_events);
             }
-            for i in 0..NUM_WORDS {
+            for i in 0..NumWords::USIZE {
                 cols.dst_access[i].populate(event.dst_access[i], &mut new_byte_lookup_events);
             }
 
@@ -126,25 +142,47 @@ where
     fn included(&self, shard: &Self::Record) -> bool {
         shard
             .memcpy_events
-            .get(&NUM_WORDS)
+            .get(&NumWords::USIZE)
             .map(|events| !events.is_empty())
             .unwrap_or(false)
     }
 }
 
-impl<F: Field, const NUM_WORDS: usize> BaseAir<F> for MemCopyChip<NUM_WORDS> {
+impl<F: Field, NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sync> BaseAir<F>
+    for MemCopyChip<NumWords, NumBytes>
+{
     fn width(&self) -> usize {
         Self::NUM_COLS
     }
 }
 
-impl<AB: SP1AirBuilder, const NUM_WORDS: usize> Air<AB> for MemCopyChip<NUM_WORDS> {
+impl<AB: SP1AirBuilder, NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sync> Air<AB>
+    for MemCopyChip<NumWords, NumBytes>
+{
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let row = main.row_slice(0);
-        let row: &MemCopyCols<AB::Var, NUM_WORDS> = (*row).borrow();
+        let row: &MemCopyCols<AB::Var, NumWords> = (*row).borrow();
+
+        let src: Limbs<<AB as AirBuilder>::Var, NumBytes> = limbs_from_prev_access(&row.src_access);
+        let dst: Limbs<<AB as AirBuilder>::Var, NumBytes> = limbs_from_access(&row.dst_access);
 
         // TODO assert eq
+
+        builder.eval_memory_access_slice(
+            row.shard,
+            row.clk.into(),
+            row.src_ptr,
+            &row.src_access,
+            row.is_real,
+        );
+        builder.eval_memory_access_slice(
+            row.shard,
+            row.clk.into(),
+            row.dst_ptr,
+            &row.dst_access,
+            row.is_real,
+        );
 
         builder.receive_syscall(
             row.shard,

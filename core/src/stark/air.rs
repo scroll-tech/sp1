@@ -6,6 +6,7 @@ use crate::stark::Chip;
 use crate::StarkGenericConfig;
 use p3_field::PrimeField32;
 pub use riscv_chips::*;
+use typenum::{U16, U32, U64, U8};
 
 /// A module for importing all the different RISC-V chips.
 pub(crate) mod riscv_chips {
@@ -108,8 +109,8 @@ pub enum RiscvAir<F: PrimeField32> {
     /// A precompile for decompressing a point on the BLS12-381 curve.
     Bls12381Decompress(WeierstrassDecompressChip<SwCurve<Bls12381Parameters>>),
 
-    MemCpy32(MemCopyChip<8>),
-    MemCpy64(MemCopyChip<16>),
+    MemCpy32(MemCopyChip<U8, U32>),
+    MemCpy64(MemCopyChip<U16, U64>),
 }
 
 impl<F: PrimeField32> RiscvAir<F> {
@@ -186,8 +187,8 @@ impl<F: PrimeField32> RiscvAir<F> {
         let byte = ByteChip::default();
         chips.push(RiscvAir::ByteLookup(byte));
 
-        chips.push(RiscvAir::MemCpy32(MemCopyChip::<8>::new()));
-        chips.push(RiscvAir::MemCpy64(MemCopyChip::<16>::new()));
+        chips.push(RiscvAir::MemCpy32(MemCopyChip::new()));
+        chips.push(RiscvAir::MemCpy64(MemCopyChip::new()));
 
         chips
     }
