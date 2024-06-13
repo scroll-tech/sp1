@@ -11,10 +11,11 @@ fn main() {
     let mut stdin = SP1Stdin::new();
 
     let client = ProverClient::new();
-    let mut proof = client.prove(ELF, stdin).expect("proving failed");
+    let (pk, vk) = client.setup(ELF);
+    let mut proof = client.prove(&pk, stdin).expect("proving failed");
 
     // Verify proof.
-    client.verify(ELF, &proof).expect("verification failed");
+    client.verify(&proof, &vk).expect("verification failed");
 
     // Save proof.
     proof

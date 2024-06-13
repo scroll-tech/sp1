@@ -4,7 +4,7 @@ pub struct SyscallHintLen;
 
 /// SyscallHintLen returns the length of the next slice in the hint input stream.
 impl SyscallHintLen {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self
     }
 }
@@ -22,7 +22,7 @@ pub struct SyscallHintRead;
 
 /// SyscallHintRead returns the length of the next slice in the hint input stream.
 impl SyscallHintRead {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self
     }
 }
@@ -73,9 +73,9 @@ mod tests {
     use rand::RngCore;
 
     use crate::{
+        io::SP1Stdin,
         runtime::Program,
-        utils::{run_and_prove, setup_logger, BabyBearPoseidon2},
-        SP1Stdin,
+        utils::{prove, setup_logger, BabyBearPoseidon2, SP1CoreOpts},
     };
 
     const HINT_IO_ELF: &[u8] =
@@ -96,6 +96,6 @@ mod tests {
         let program = Program::from(HINT_IO_ELF);
 
         let config = BabyBearPoseidon2::new();
-        run_and_prove(program, &stdin.buffer, config);
+        prove(program, &stdin, config, SP1CoreOpts::default()).unwrap();
     }
 }

@@ -3,36 +3,38 @@ use std::fmt::Debug;
 use num::{BigUint, Zero};
 use p3_air::AirBuilder;
 use p3_field::PrimeField32;
-use serde::{Deserialize, Serialize};
 use sp1_derive::AlignedBorrow;
 
-use super::params::Limbs;
+use super::params::{FieldParameters, Limbs};
 use super::util::{compute_root_quotient_and_shift, split_u16_limbs_to_u8_limbs};
 use super::util_air::eval_field_operation;
 use crate::air::Polynomial;
 use crate::air::SP1AirBuilder;
-use crate::utils::ec::field::FieldParameters;
+use crate::bytes::event::ByteRecord;
+use typenum::Unsigned;
 
-#[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
+/// Airthmetic operation for emulating modular arithmetic.
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub enum FieldOperation {
-    Add = 0,
-    Sub = 1,
-    Mul = 2,
-    Div = 3, // We don't constrain that the divisor is non-zero.
+    Add,
+    Mul,
+    Sub,
+    Div,
 }
 
-// impl Into<u32> for FieldOperation {
-//     fn into(self) -> u32 {
-//         self as u32
-//     }
-// }
-
-/// A set of columns to compute `FieldOperation(a, b)` where a, b are field elements.
-/// Right now the number of limbs is assumed to be a constant, although this could be macro-ed
-/// or made generic in the future.
+/// A set of columns to compute an emulated modular arithmetic operation.
 ///
-/// TODO: There is an issue here here some fields in these columns must be range checked. This is
-/// a known issue and will be fixed in the future.
+/// *Safety* The input operands (a, b) (not included in the operation columns) are assumed to be
+/// elements within the range `[0, 2^{P::nb_bits()})`. the result is also assumed to be within the
+/// same range. Let `M = P:modulus()`. The constraints of the function [`FieldOpCols::eval`] assert
+/// that:
+/// * When `op` is `FieldOperation::Add`, then `result = a + b mod M`.
+/// * When `op` is `FieldOperation::Mul`, then `result = a * b mod M`.
+/// * When `op` is `FieldOperation::Sub`, then `result = a - b mod M`.
+/// * When `op` is `FieldOperation::Div`, then `result * b = a mod M`.
+///
+/// **Warning**: The constraints do not check for division by zero. The caller is responsible for
+/// ensuring that the division operation is valid.
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
 pub struct FieldOpCols<T, P: FieldParameters> {
@@ -44,53 +46,15 @@ pub struct FieldOpCols<T, P: FieldParameters> {
 }
 
 impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
-    pub fn populate(&mut self, a: &BigUint, b: &BigUint, op: FieldOperation) -> BigUint {
-        if b == &BigUint::zero() && op == FieldOperation::Div {
-            // Division by 0 is allowed only when dividing 0 so that padded rows can be all 0.
-            assert_eq!(
-                *a,
-                BigUint::zero(),
-                "division by zero is allowed only when dividing zero"
-            );
-        }
-
-        let modulus = P::modulus();
-
-        // If doing the subtraction operation, a - b = result, equivalent to a = result + b.
-        if op == FieldOperation::Sub {
-            let result = (modulus.clone() + a - b) % &modulus;
-            // We populate the carry, witness_low, witness_high as if we were doing an addition with result + b.
-            // But we populate `result` with the actual result of the subtraction because those columns are expected
-            // to contain the result by the user.
-            // Note that this reversal means we have to flip result, a correspondingly in
-            // the `eval` function.
-            self.populate(&result, b, FieldOperation::Add);
-            self.result = P::to_limbs_field::<F, _>(&result);
-            return result;
-        }
-
-        // a / b = result is equivalent to a = result * b.
-        if op == FieldOperation::Div {
-            // As modulus is prime, we can use Fermat's little theorem to compute the
-            // inverse.
-            let result =
-                (a * b.modpow(&(modulus.clone() - 2u32), &modulus.clone())) % modulus.clone();
-
-            // We populate the carry, witness_low, witness_high as if we were doing a multiplication
-            // with result * b. But we populate `result` with the actual result of the
-            // multiplication because those columns are expected to contain the result by the user.
-            // Note that this reversal means we have to flip result, a correspondingly in the `eval`
-            // function.
-            self.populate(&result, b, FieldOperation::Mul);
-            self.result = P::to_limbs_field::<F, _>(&result);
-            return result;
-        }
-
+    pub fn populate_carry_and_witness(
+        &mut self,
+        a: &BigUint,
+        b: &BigUint,
+        op: FieldOperation,
+        modulus: &BigUint,
+    ) -> BigUint {
         let p_a: Polynomial<F> = P::to_limbs_field::<F, _>(a).into();
         let p_b: Polynomial<F> = P::to_limbs_field::<F, _>(b).into();
-
-        // Compute field addition in the integers.
-        let modulus = &P::modulus();
         let (result, carry) = match op {
             FieldOperation::Add => ((a + b) % modulus, (a + b - (a + b) % modulus) / modulus),
             FieldOperation::Mul => ((a * b) % modulus, (a * b - (a * b) % modulus) / modulus),
@@ -104,8 +68,14 @@ impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
             FieldOperation::Sub | FieldOperation::Div => unreachable!(),
         }
 
-        // Make little endian polynomial limbs.
-        let p_modulus: Polynomial<F> = P::to_limbs_field::<F, _>(modulus).into();
+        // Here we have special logic for p_modulus because to_limbs_field only works for numbers in
+        // the field, but modulus can == the field modulus so it can have 1 extra limb (ex. uint256).
+        let p_modulus_limbs = modulus
+            .to_bytes_le()
+            .iter()
+            .map(|x| F::from_canonical_u8(*x))
+            .collect::<Vec<F>>();
+        let p_modulus: Polynomial<F> = p_modulus_limbs.iter().into();
         let p_result: Polynomial<F> = P::to_limbs_field::<F, _>(&result).into();
         let p_carry: Polynomial<F> = P::to_limbs_field::<F, _>(&carry).into();
 
@@ -116,43 +86,122 @@ impl<F: PrimeField32, P: FieldParameters> FieldOpCols<F, P> {
             FieldOperation::Sub | FieldOperation::Div => unreachable!(),
         };
         let p_vanishing: Polynomial<F> = &p_op - &p_result - &p_carry * &p_modulus;
-        debug_assert_eq!(p_vanishing.degree(), P::NB_WITNESS_LIMBS);
 
         let p_witness = compute_root_quotient_and_shift(
             &p_vanishing,
             P::WITNESS_OFFSET,
             P::NB_BITS_PER_LIMB as u32,
+            P::NB_WITNESS_LIMBS,
         );
-        let (p_witness_low, p_witness_high) = split_u16_limbs_to_u8_limbs(&p_witness);
+        let (mut p_witness_low, mut p_witness_high) = split_u16_limbs_to_u8_limbs(&p_witness);
 
         self.result = p_result.into();
         self.carry = p_carry.into();
 
+        p_witness_low.resize(P::Witness::USIZE, F::zero());
+        p_witness_high.resize(P::Witness::USIZE, F::zero());
         self.witness_low = Limbs(p_witness_low.try_into().unwrap());
         self.witness_high = Limbs(p_witness_high.try_into().unwrap());
 
         result
     }
+
+    /// Populate these columns with a specified modulus. This is useful in the `mulmod` precompile
+    /// as an example.
+    #[allow(clippy::too_many_arguments)]
+    pub fn populate_with_modulus(
+        &mut self,
+        record: &mut impl ByteRecord,
+        shard: u32,
+        channel: u32,
+        a: &BigUint,
+        b: &BigUint,
+        modulus: &BigUint,
+        op: FieldOperation,
+    ) -> BigUint {
+        if b == &BigUint::zero() && op == FieldOperation::Div {
+            // Division by 0 is allowed only when dividing 0 so that padded rows can be all 0.
+            assert_eq!(
+                *a,
+                BigUint::zero(),
+                "division by zero is allowed only when dividing zero"
+            );
+        }
+
+        let result = match op {
+            // If doing the subtraction operation, a - b = result, equivalent to a = result + b.
+            FieldOperation::Sub => {
+                let result = (modulus.clone() + a - b) % modulus;
+                // We populate the carry, witness_low, witness_high as if we were doing an addition with result + b.
+                // But we populate `result` with the actual result of the subtraction because those columns are expected
+                // to contain the result by the user.
+                // Note that this reversal means we have to flip result, a correspondingly in
+                // the `eval` function.
+                self.populate_carry_and_witness(&result, b, FieldOperation::Add, modulus);
+                self.result = P::to_limbs_field::<F, _>(&result);
+                result
+            }
+            // a / b = result is equivalent to a = result * b.
+            FieldOperation::Div => {
+                // As modulus is prime, we can use Fermat's little theorem to compute the
+                // inverse.
+                let result =
+                    (a * b.modpow(&(modulus.clone() - 2u32), &modulus.clone())) % modulus.clone();
+
+                // We populate the carry, witness_low, witness_high as if we were doing a multiplication
+                // with result * b. But we populate `result` with the actual result of the
+                // multiplication because those columns are expected to contain the result by the user.
+                // Note that this reversal means we have to flip result, a correspondingly in the `eval`
+                // function.
+                self.populate_carry_and_witness(&result, b, FieldOperation::Mul, modulus);
+                self.result = P::to_limbs_field::<F, _>(&result);
+                result
+            }
+            _ => self.populate_carry_and_witness(a, b, op, modulus),
+        };
+
+        // Range checks
+        record.add_u8_range_checks_field(shard, channel, &self.result.0);
+        record.add_u8_range_checks_field(shard, channel, &self.carry.0);
+        record.add_u8_range_checks_field(shard, channel, &self.witness_low.0);
+        record.add_u8_range_checks_field(shard, channel, &self.witness_high.0);
+
+        result
+    }
+
+    /// Populate these columns without a specified modulus (will use the modulus of the field parameters).
+    pub fn populate(
+        &mut self,
+        record: &mut impl ByteRecord,
+        shard: u32,
+        channel: u32,
+        a: &BigUint,
+        b: &BigUint,
+        op: FieldOperation,
+    ) -> BigUint {
+        self.populate_with_modulus(record, shard, channel, a, b, &P::modulus(), op)
+    }
 }
 
 impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
-    #[allow(unused_variables)]
-    pub fn eval<
-        AB: SP1AirBuilder<Var = V>,
-        A: Into<Polynomial<AB::Expr>> + Clone,
-        B: Into<Polynomial<AB::Expr>> + Clone,
-    >(
+    #[allow(clippy::too_many_arguments)]
+    pub fn eval_with_modulus<AB: SP1AirBuilder<Var = V>>(
         &self,
         builder: &mut AB,
-        a: &A,
-        b: &B,
+        a: &(impl Into<Polynomial<AB::Expr>> + Clone),
+        b: &(impl Into<Polynomial<AB::Expr>> + Clone),
+        modulus: &(impl Into<Polynomial<AB::Expr>> + Clone),
         op: FieldOperation,
+        shard: impl Into<AB::Expr> + Clone,
+        channel: impl Into<AB::Expr> + Clone,
+        is_real: impl Into<AB::Expr> + Clone,
     ) where
         V: Into<AB::Expr>,
         Limbs<V, P::Limbs>: Copy,
     {
-        let p_a_param: Polynomial<AB::Expr> = (*a).clone().into();
-        let p_b: Polynomial<AB::Expr> = (*b).clone().into();
+        let p_a_param: Polynomial<AB::Expr> = (a).clone().into();
+        let p_b: Polynomial<AB::Expr> = (b).clone().into();
+        let p_modulus: Polynomial<AB::Expr> = (modulus).clone().into();
 
         let (p_a, p_result): (Polynomial<_>, Polynomial<_>) = match op {
             FieldOperation::Add | FieldOperation::Mul => (p_a_param, self.result.into()),
@@ -163,12 +212,55 @@ impl<V: Copy, P: FieldParameters> FieldOpCols<V, P> {
             FieldOperation::Add | FieldOperation::Sub => p_a + p_b,
             FieldOperation::Mul | FieldOperation::Div => p_a * p_b,
         };
-        let p_op_minus_result: Polynomial<AB::Expr> = p_op - p_result;
-        let p_limbs = Polynomial::from_iter(P::modulus_field_iter::<AB::F>().map(AB::Expr::from));
-        let p_vanishing = p_op_minus_result - &(&p_carry * &p_limbs);
+        let p_op_minus_result: Polynomial<AB::Expr> = p_op - &p_result;
+        let p_vanishing = p_op_minus_result - &(&p_carry * &p_modulus);
         let p_witness_low = self.witness_low.0.iter().into();
         let p_witness_high = self.witness_high.0.iter().into();
         eval_field_operation::<AB, P>(builder, &p_vanishing, &p_witness_low, &p_witness_high);
+
+        // Range checks for the result, carry, and witness columns.
+        builder.slice_range_check_u8(
+            &self.result.0,
+            shard.clone(),
+            channel.clone(),
+            is_real.clone(),
+        );
+        builder.slice_range_check_u8(
+            &self.carry.0,
+            shard.clone(),
+            channel.clone(),
+            is_real.clone(),
+        );
+        builder.slice_range_check_u8(
+            p_witness_low.coefficients(),
+            shard.clone(),
+            channel.clone(),
+            is_real.clone(),
+        );
+        builder.slice_range_check_u8(
+            p_witness_high.coefficients(),
+            shard.clone(),
+            channel.clone(),
+            is_real,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn eval<AB: SP1AirBuilder<Var = V>>(
+        &self,
+        builder: &mut AB,
+        a: &(impl Into<Polynomial<AB::Expr>> + Clone),
+        b: &(impl Into<Polynomial<AB::Expr>> + Clone),
+        op: FieldOperation,
+        shard: impl Into<AB::Expr> + Clone,
+        channel: impl Into<AB::Expr> + Clone,
+        is_real: impl Into<AB::Expr> + Clone,
+    ) where
+        V: Into<AB::Expr>,
+        Limbs<V, P::Limbs>: Copy,
+    {
+        let p_limbs = Polynomial::from_iter(P::modulus_field_iter::<AB::F>().map(AB::Expr::from));
+        self.eval_with_modulus::<AB>(builder, a, b, &p_limbs, op, shard, channel, is_real);
     }
 }
 
@@ -182,10 +274,11 @@ mod tests {
 
     use crate::air::MachineAir;
 
+    use crate::bytes::event::ByteRecord;
+    use crate::operations::field::params::FieldParameters;
     use crate::runtime::Program;
     use crate::stark::StarkGenericConfig;
     use crate::utils::ec::edwards::ed25519::Ed25519BaseField;
-    use crate::utils::ec::field::FieldParameters;
     use crate::utils::ec::weierstrass::secp256k1::Secp256k1BaseField;
     use crate::utils::{
         pad_to_power_of_two, uni_stark_prove as prove, uni_stark_verify as verify,
@@ -196,6 +289,7 @@ mod tests {
     use num::bigint::RandBigInt;
     use p3_air::Air;
     use p3_baby_bear::BabyBear;
+    use p3_field::AbstractField;
     use p3_matrix::dense::RowMajorMatrix;
     use p3_matrix::Matrix;
     use rand::thread_rng;
@@ -217,7 +311,7 @@ mod tests {
     }
 
     impl<P: FieldParameters> FieldOpChip<P> {
-        pub fn new(operation: FieldOperation) -> Self {
+        pub const fn new(operation: FieldOperation) -> Self {
             Self {
                 operation,
                 _phantom: std::marker::PhantomData,
@@ -237,7 +331,7 @@ mod tests {
         fn generate_trace(
             &self,
             _: &ExecutionRecord,
-            _: &mut ExecutionRecord,
+            output: &mut ExecutionRecord,
         ) -> RowMajorMatrix<F> {
             let mut rng = thread_rng();
             let num_rows = 1 << 8;
@@ -262,11 +356,14 @@ mod tests {
             let rows = operands
                 .iter()
                 .map(|(a, b)| {
+                    let mut blu_events = Vec::new();
                     let mut row = [F::zero(); NUM_TEST_COLS];
                     let cols: &mut TestCols<F, P> = row.as_mut_slice().borrow_mut();
                     cols.a = P::to_limbs_field::<F, _>(a);
                     cols.b = P::to_limbs_field::<F, _>(b);
-                    cols.a_op_b.populate(a, b, self.operation);
+                    cols.a_op_b
+                        .populate(&mut blu_events, 1, 0, a, b, self.operation);
+                    output.add_byte_lookup_events(blu_events);
                     row
                 })
                 .collect::<Vec<_>>();
@@ -302,14 +399,15 @@ mod tests {
             let main = builder.main();
             let local = main.row_slice(0);
             let local: &TestCols<AB::Var, P> = (*local).borrow();
-            local
-                .a_op_b
-                .eval::<AB, _, _>(builder, &local.a, &local.b, self.operation);
-
-            // A dummy constraint to keep the degree 3.
-            builder.assert_zero(
-                local.a[0] * local.b[0] * local.a[0] - local.a[0] * local.b[0] * local.a[0],
-            )
+            local.a_op_b.eval(
+                builder,
+                &local.a,
+                &local.b,
+                self.operation,
+                AB::F::one(),
+                AB::F::zero(),
+                AB::F::one(),
+            );
         }
     }
 

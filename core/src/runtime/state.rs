@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::{
-    stark::{Proof, VerifyingKey},
-    utils::BabyBearPoseidon2Inner,
+    stark::{ShardProof, StarkVerifyingKey},
+    utils::BabyBearPoseidon2,
 };
 
 use super::{ExecutionRecord, MemoryAccessRecord, MemoryRecord};
@@ -24,6 +24,10 @@ pub struct ExecutionState {
     /// The clock increments by 4 (possibly more in syscalls) for each instruction that has been
     /// executed in this shard.
     pub clk: u32,
+
+    /// The channel alternates between 0 and [crate::bytes::NUM_BYTE_LOOKUP_CHANNELS],
+    /// used to controll byte lookup multiplicity.
+    pub channel: u32,
 
     /// The program counter.
     pub pc: u32,
@@ -43,10 +47,9 @@ pub struct ExecutionState {
     pub input_stream_ptr: usize,
 
     /// A stream of proofs inputted to the program.
-    #[serde(skip)] // TODO: fix serialization for VerifyingKey
     pub proof_stream: Vec<(
-        Proof<BabyBearPoseidon2Inner>,
-        VerifyingKey<BabyBearPoseidon2Inner>,
+        ShardProof<BabyBearPoseidon2>,
+        StarkVerifyingKey<BabyBearPoseidon2>,
     )>,
 
     /// A ptr to the current position in the proof stream, incremented after verifying a proof.
@@ -66,6 +69,7 @@ impl ExecutionState {
             // Start at shard 1 since shard 0 is reserved for memory initialization.
             current_shard: 1,
             clk: 0,
+            channel: 0,
             pc: pc_start,
             memory: HashMap::default(),
             uninitialized_memory: HashMap::default(),

@@ -6,12 +6,10 @@ pub use mac::Bn254ScalarMacChip;
 pub use mul::Bn254ScalarMulChip;
 
 use crate::{
+    operations::field::params::{FieldParameters, NumWords},
     operations::field::{field_op::FieldOperation, params::Limbs},
     runtime::{MemoryReadRecord, MemoryWriteRecord, SyscallContext},
-    utils::ec::{
-        field::{FieldParameters, NumWords},
-        weierstrass::bn254::Bn254ScalarField,
-    },
+    utils::ec::weierstrass::bn254::Bn254ScalarField,
 };
 use num::BigUint;
 use typenum::Unsigned;
@@ -83,6 +81,7 @@ impl Bn254FieldOperation {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Bn254FieldArithEvent {
     pub shard: u32,
+    pub channel: u32,
     pub clk: u32,
     pub op: Bn254FieldOperation,
     pub arg1: FieldArithMemoryAccess<MemoryWriteRecord>,
@@ -160,6 +159,7 @@ pub fn create_bn254_scalar_arith_event(
     let shard = rt.current_shard();
     Bn254FieldArithEvent {
         shard,
+        channel: rt.current_channel(),
         clk: start_clk,
         op,
         arg1,

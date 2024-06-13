@@ -1,7 +1,8 @@
 use p3_field::AbstractField;
+use serde::{Deserialize, Serialize};
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Opcode {
     // Arithmetic field instructions.
     ADD = 0,
@@ -15,25 +16,13 @@ pub enum Opcode {
     EMUL = 12,
     EDIV = 13,
 
-    // Mixed arithmetic operations.
-    EFADD = 20,
-    EFSUB = 21,
-    FESUB = 24,
-    EFMUL = 22,
-    EFDIV = 23,
-    FEDIV = 25,
-
     // Memory instructions.
-    LW = 4,
-    SW = 5,
-    LE = 14,
-    SE = 15,
+    LOAD = 4,
+    STORE = 5,
 
     // Branch instructions.
     BEQ = 6,
     BNE = 7,
-    EBEQ = 16,
-    EBNE = 17,
 
     // Jump instructions.
     JAL = 8,
@@ -41,25 +30,26 @@ pub enum Opcode {
 
     // System instructions.
     TRAP = 30,
+    HALT = 31,
 
     // Hash instructions.
-    Poseidon2Perm = 31,
+    Poseidon2Compress = 39,
 
     // Bit instructions.
     HintBits = 32,
 
     PrintF = 33,
     PrintE = 34,
-    Ext2Felt = 35,
+    HintExt2Felt = 35,
 
     FRIFold = 36,
     HintLen = 37,
     Hint = 38,
-    Poseidon2Compress = 39,
     BNEINC = 40,
     Commit = 41,
-    LessThanF = 42,
-    CycleTracker = 43,
+    RegisterPublicValue = 42,
+    LessThanF = 43,
+    CycleTracker = 44,
 }
 
 impl Opcode {
