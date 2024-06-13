@@ -8,20 +8,16 @@ use p3_field::{Field, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_derive::AlignedBorrow;
 
+use crate::bytes::event::ByteRecord;
 use crate::{
     air::MachineAir,
     memory::{MemoryCols, MemoryReadCols, MemoryWriteCols},
     operations::field::field_op::FieldOpCols,
+    operations::field::params::{FieldParameters, NumLimbs},
     runtime::{ExecutionRecord, Program, Syscall, SyscallCode},
     stark::SP1AirBuilder,
     syscall::precompiles::bn254_scalar::Limbs,
-    utils::{
-        ec::{
-            field::{FieldParameters, NumLimbs},
-            weierstrass::bn254::Bn254ScalarField,
-        },
-        limbs_from_prev_access, pad_rows,
-    },
+    utils::{ec::weierstrass::bn254::Bn254ScalarField, limbs_from_prev_access, pad_rows},
 };
 
 use super::{create_bn254_scalar_arith_event, Bn254FieldOperation, NUM_WORDS_PER_FE};
@@ -98,7 +94,13 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
             cols.p_ptr = F::from_canonical_u32(event.arg1.ptr);
             cols.q_ptr = F::from_canonical_u32(event.arg2.ptr);
 
-            cols.eval.populate(&p, &q, OP.to_field_operation());
+            cols.eval.populate(
+                &mut new_byte_lookup_events,
+                event.shard,
+                &p,
+                &q,
+                OP.to_field_operation(),
+            );
 
             for i in 0..cols.p_access.len() {
                 cols.p_access[i]
@@ -118,7 +120,8 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
             let cols: &mut Bn254ScalarMulCols<F> = row.as_mut_slice().borrow_mut();
 
             let zero = BigUint::zero();
-            cols.eval.populate(&zero, &zero, OP.to_field_operation());
+            cols.eval
+                .populate(&mut vec![], 0, &zero, &zero, OP.to_field_operation());
 
             row
         });
@@ -159,7 +162,14 @@ where
         let q: Limbs<<AB as AirBuilder>::Var, <Bn254ScalarField as NumLimbs>::Limbs> =
             limbs_from_prev_access(&row.q_access);
 
-        row.eval.eval(builder, &p, &q, OP.to_field_operation());
+        row.eval.eval(
+            builder,
+            &p,
+            &q,
+            OP.to_field_operation(),
+            row.shard,
+            row.is_real,
+        );
 
         for i in 0..Bn254ScalarField::NB_LIMBS {
             builder

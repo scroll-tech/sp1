@@ -11,18 +11,14 @@ use typenum::U8;
 
 use crate::{
     air::MachineAir,
+    bytes::event::ByteRecord,
     memory::{MemoryCols, MemoryReadCols, MemoryWriteCols},
     operations::field::field_op::{FieldOpCols, FieldOperation},
+    operations::field::params::{FieldParameters, NumLimbs},
     runtime::{ExecutionRecord, Program, Syscall, SyscallCode},
     stark::SP1AirBuilder,
     syscall::precompiles::bn254_scalar::Limbs,
-    utils::{
-        ec::{
-            field::{FieldParameters, NumLimbs},
-            weierstrass::bn254::Bn254ScalarField,
-        },
-        limbs_from_prev_access, pad_rows,
-    },
+    utils::{ec::weierstrass::bn254::Bn254ScalarField, limbs_from_prev_access, pad_rows},
 };
 
 use super::{create_bn254_scalar_arith_event, Bn254FieldOperation, NUM_WORDS_PER_FE};
@@ -103,8 +99,20 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
             cols.arg1_ptr = F::from_canonical_u32(event.arg1.ptr);
             cols.arg2_ptr = F::from_canonical_u32(event.arg2.ptr);
 
-            let mul = cols.mul_eval.populate(&a, &b, FieldOperation::Mul);
-            cols.add_eval.populate(&arg1, &mul, FieldOperation::Add);
+            let mul = cols.mul_eval.populate(
+                &mut new_byte_lookup_events,
+                event.shard,
+                &a,
+                &b,
+                FieldOperation::Mul,
+            );
+            cols.add_eval.populate(
+                &mut new_byte_lookup_events,
+                event.shard,
+                &arg1,
+                &mul,
+                FieldOperation::Add,
+            );
 
             for i in 0..cols.arg1_access.len() {
                 cols.arg1_access[i]
@@ -136,8 +144,10 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
             let cols: &mut Bn254ScalarMacCols<F> = row.as_mut_slice().borrow_mut();
 
             let zero = BigUint::zero();
-            cols.mul_eval.populate(&zero, &zero, FieldOperation::Mul);
-            cols.add_eval.populate(&zero, &zero, FieldOperation::Add);
+            cols.mul_eval
+                .populate(&mut vec![], 0, &zero, &zero, FieldOperation::Mul);
+            cols.add_eval
+                .populate(&mut vec![], 0, &zero, &zero, FieldOperation::Add);
 
             row
         });
@@ -180,9 +190,16 @@ where
         let b: Limbs<<AB as AirBuilder>::Var, <Bn254ScalarField as NumLimbs>::Limbs> =
             limbs_from_prev_access(&row.b_access);
 
-        row.mul_eval.eval(builder, &a, &b, FieldOperation::Mul);
-        row.add_eval
-            .eval(builder, &arg1, &row.mul_eval.result, FieldOperation::Add);
+        row.mul_eval
+            .eval(builder, &a, &b, FieldOperation::Mul, row.shard, row.is_real);
+        row.add_eval.eval(
+            builder,
+            &arg1,
+            &row.mul_eval.result,
+            FieldOperation::Add,
+            row.shard,
+            row.is_real,
+        );
 
         for i in 0..Bn254ScalarField::NB_LIMBS {
             builder.when(row.is_real).assert_eq(

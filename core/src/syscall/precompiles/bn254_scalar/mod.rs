@@ -6,12 +6,10 @@ pub use mac::Bn254ScalarMacChip;
 pub use mul::Bn254ScalarMulChip;
 
 use crate::{
+    operations::field::params::{FieldParameters, NumWords},
     operations::field::{field_op::FieldOperation, params::Limbs},
     runtime::{MemoryReadRecord, MemoryWriteRecord, SyscallContext},
-    utils::ec::{
-        field::{FieldParameters, NumWords},
-        weierstrass::bn254::Bn254ScalarField,
-    },
+    utils::ec::weierstrass::bn254::Bn254ScalarField,
 };
 use num::BigUint;
 use typenum::Unsigned;

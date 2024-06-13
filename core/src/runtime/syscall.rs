@@ -343,14 +343,14 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
         SyscallCode::BLS12381_DECOMPRESS,
         Arc::new(WeierstrassDecompressChip::<Bls12381>::new()),
     );
-    syscall_map.insert(SyscallCode::UINT256_MUL, Rc::new(Uint256MulChip::new()));
+    syscall_map.insert(SyscallCode::UINT256_MUL, Arc::new(Uint256MulChip::new()));
     syscall_map.insert(
         SyscallCode::BN254_SCALAR_MUL,
-        Rc::new(Bn254ScalarMulChip::new()),
+        Arc::new(Bn254ScalarMulChip::new()),
     );
     syscall_map.insert(
         SyscallCode::BN254_SCALAR_MAC,
-        Rc::new(Bn254ScalarMacChip::new()),
+        Arc::new(Bn254ScalarMacChip::new()),
     );
 
     syscall_map
