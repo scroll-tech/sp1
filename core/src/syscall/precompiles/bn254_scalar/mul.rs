@@ -30,6 +30,7 @@ const OP: Bn254FieldOperation = Bn254FieldOperation::Mul;
 pub struct Bn254ScalarMulCols<T> {
     is_real: T,
     shard: T,
+    channel: T,
     clk: T,
     p_ptr: T,
     q_ptr: T,
@@ -90,6 +91,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
 
             cols.is_real = F::one();
             cols.shard = F::from_canonical_u32(event.shard);
+            cols.channel = F::from_canonical_u32(event.channel);
             cols.clk = F::from_canonical_u32(event.clk);
             cols.p_ptr = F::from_canonical_u32(event.arg1.ptr);
             cols.q_ptr = F::from_canonical_u32(event.arg2.ptr);
@@ -97,18 +99,25 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
             cols.eval.populate(
                 &mut new_byte_lookup_events,
                 event.shard,
+                event.channel,
                 &p,
                 &q,
                 OP.to_field_operation(),
             );
 
             for i in 0..cols.p_access.len() {
-                cols.p_access[i]
-                    .populate(event.arg1.memory_records[i], &mut new_byte_lookup_events);
+                cols.p_access[i].populate(
+                    event.channel,
+                    event.arg1.memory_records[i],
+                    &mut new_byte_lookup_events,
+                );
             }
             for i in 0..cols.q_access.len() {
-                cols.q_access[i]
-                    .populate(event.arg2.memory_records[i], &mut new_byte_lookup_events);
+                cols.q_access[i].populate(
+                    event.channel,
+                    event.arg2.memory_records[i],
+                    &mut new_byte_lookup_events,
+                );
             }
 
             rows.push(row);
@@ -121,7 +130,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
 
             let zero = BigUint::zero();
             cols.eval
-                .populate(&mut vec![], 0, &zero, &zero, OP.to_field_operation());
+                .populate(&mut vec![], 0, 0, &zero, &zero, OP.to_field_operation());
 
             row
         });
@@ -168,6 +177,7 @@ where
             &q,
             OP.to_field_operation(),
             row.shard,
+            row.channel,
             row.is_real,
         );
 
@@ -179,6 +189,7 @@ where
 
         builder.eval_memory_access_slice(
             row.shard,
+            row.channel,
             row.clk.into(),
             row.q_ptr,
             &row.q_access,
@@ -187,6 +198,7 @@ where
 
         builder.eval_memory_access_slice(
             row.shard,
+            row.channel,
             row.clk.into(),
             row.p_ptr,
             &row.p_access,
@@ -196,6 +208,7 @@ where
         let syscall_id = AB::F::from_canonical_u32(SyscallCode::BN254_SCALAR_MUL.syscall_id());
         builder.receive_syscall(
             row.shard,
+            row.channel,
             row.clk,
             syscall_id,
             row.p_ptr,

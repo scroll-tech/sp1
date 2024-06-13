@@ -840,10 +840,10 @@ impl Runtime {
                         .or_insert(1);
                 }
 
+                let global_clk = self.state.global_clk;
                 let syscall_impl = self.get_syscall(syscall).cloned();
                 let mut precompile_rt = SyscallContext::new(self);
 
-                let global_clk = self.state.global_clk;
                 log::debug!(
                     "[clk: {}, pc: 0x{:x}] ecall syscall_id=0x{:x}, b: 0x{:x}, c: 0x{:x}",
                     global_clk,
