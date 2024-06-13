@@ -10,17 +10,6 @@ hex = "0.4"
 halo2curves = { git = "https://github.com/scroll-tech/halo2curves.git", branch = "feat/sp1" }
 poseidon_base = { git = "https://github.com/scroll-tech/poseidon-circuit.git", package = "poseidon-base", branch = "feat/sp1" }
 
-#halo2curves = { path = "../../../../halo2curves" }
-#poseidon_base = { path = "../../../../poseidon-circuit/poseidon-base", package = "poseidon-base" }
-
 [patch.crates-io]
 ff = { git = "https://github.com/scroll-tech/ff", branch = "feat/sp1" }
 halo2curves = { git = "https://github.com/scroll-tech/halo2curves.git", branch = "feat/sp1" }
-
-#[patch.crates-io]
-#ff = { path = "../../../../ff" }
-#halo2curves = { path = "../../../../halo2curves" }
-#[patch."https://github.com/scroll-tech/ff"]
-#ff = { path = "../../../../ff" }
-#[patch."https://github.com/scroll-tech/halo2curves.git"]
-#halo2curves = { path = "../../../../halo2curves" }
