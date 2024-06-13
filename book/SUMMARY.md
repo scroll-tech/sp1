@@ -40,4 +40,6 @@
 
 - [Recommended Settings](./developers/recommended-settings.md)
 
-- [Building Groth16 Artifacts](./developers/building-groth16-artifacts.md)
+- [Building Plonk Bn254 Artifacts](./developers/building-plonk-artifacts.md)
+
+- [Common Issues](./developers/common-issues.md)

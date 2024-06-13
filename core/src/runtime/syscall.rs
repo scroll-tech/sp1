@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::Arc;
 
 use strum_macros::EnumIter;
@@ -29,7 +30,7 @@ use crate::{runtime::ExecutionRecord, runtime::MemoryReadRecord, runtime::Memory
 /// - The second byte is 0/1 depending on whether the syscall has a separate table. This is used
 /// in the CPU table to determine whether to lookup the syscall using the syscall interaction.
 /// - The third byte is the number of additional cycles the syscall uses.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, EnumIter)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, EnumIter, Ord, PartialOrd)]
 #[allow(non_camel_case_types)]
 pub enum SyscallCode {
     /// Halts the program.
@@ -158,6 +159,12 @@ impl SyscallCode {
     }
 }
 
+impl fmt::Display for SyscallCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 pub trait Syscall: Send + Sync {
     /// Execute the syscall and return the resulting value of register a0. `arg1` and `arg2` are the
     /// values in registers X10 and X11, respectively. While not a hard requirement, the convention
@@ -203,6 +210,10 @@ impl<'a> SyscallContext<'a> {
 
     pub fn current_shard(&self) -> u32 {
         self.rt.state.current_shard
+    }
+
+    pub fn current_channel(&self) -> u32 {
+        self.rt.state.channel
     }
 
     pub fn mr(&mut self, addr: u32) -> (MemoryReadRecord, u32) {

@@ -16,6 +16,9 @@ pub struct CreateProofRequest {
     /// The deadline for the proof request, signifying the latest time a fulfillment would be valid.
     #[prost(uint64, tag = "4")]
     pub deadline: u64,
+    /// The client version used, in the form of an 8-character git commit hash.
+    #[prost(string, tag = "5")]
+    pub version: ::prost::alloc::string::String,
 }
 /// The response for creating a proof.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -241,6 +244,9 @@ pub struct RequestedProof {
     /// The mode for proof generation.
     #[prost(enumeration = "ProofMode", tag = "2")]
     pub mode: i32,
+    /// Proof requester's address.
+    #[prost(bytes = "vec", tag = "3")]
+    pub requester: ::prost::alloc::vec::Vec<u8>,
 }
 /// The response for getting proof requests by a given status.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -300,8 +306,6 @@ pub enum ProofMode {
     Compressed = 2,
     /// The proof mode for a PlonK proof.
     Plonk = 3,
-    /// The proof mode for a Groth16 proof.
-    Groth16 = 4,
 }
 impl ProofMode {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -314,7 +318,6 @@ impl ProofMode {
             ProofMode::Core => "PROOF_MODE_CORE",
             ProofMode::Compressed => "PROOF_MODE_COMPRESSED",
             ProofMode::Plonk => "PROOF_MODE_PLONK",
-            ProofMode::Groth16 => "PROOF_MODE_GROTH16",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -324,7 +327,6 @@ impl ProofMode {
             "PROOF_MODE_CORE" => Some(Self::Core),
             "PROOF_MODE_COMPRESSED" => Some(Self::Compressed),
             "PROOF_MODE_PLONK" => Some(Self::Plonk),
-            "PROOF_MODE_GROTH16" => Some(Self::Groth16),
             _ => None,
         }
     }

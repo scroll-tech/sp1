@@ -61,8 +61,7 @@ impl<F: PrimeField32, const DEGREE: usize> MachineAir<F> for Poseidon2WideChip<D
         let num_columns = <Self as BaseAir<F>>::width(self);
 
         for event in &input.poseidon2_events {
-            let mut row = Vec::new();
-            row.resize(num_columns, F::zero());
+            let mut row = vec![F::zero(); num_columns];
 
             let mut cols = if use_sbox_3 {
                 let cols: &mut Poseidon2SBoxCols<F> = row.as_mut_slice().borrow_mut();
@@ -440,6 +439,13 @@ where
         for r in NUM_EXTERNAL_ROUNDS / 2..NUM_EXTERNAL_ROUNDS {
             eval_external_round(builder, &cols, r, memory.is_real);
         }
+
+        // Make the degree equivalent to WIDTH to compress the interaction columns.
+        let mut dummy = memory.is_real * memory.is_real;
+        for _ in 0..(DEGREE - 2) {
+            dummy *= memory.is_real.into();
+        }
+        builder.assert_eq(dummy.clone(), dummy.clone());
     }
 }
 

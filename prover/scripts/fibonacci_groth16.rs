@@ -1,7 +1,4 @@
-//! Tests end-to-end performance of wrapping a recursion proof to Groth16.
-
-#![feature(generic_const_exprs)]
-#![allow(incomplete_features)]
+//! Tests end-to-end performance of wrapping a recursion proof to PLONK.
 
 use std::time::Instant;
 

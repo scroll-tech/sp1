@@ -1,5 +1,4 @@
 #![allow(
-    clippy::eq_op,
     clippy::new_without_default,
     clippy::field_reassign_with_default,
     clippy::unnecessary_cast,
@@ -12,7 +11,6 @@
     deprecated,
     incomplete_features
 )]
-#![feature(generic_const_exprs)]
 #![warn(unused_extern_crates)]
 
 extern crate alloc;
