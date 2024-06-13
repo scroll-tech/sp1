@@ -5,6 +5,7 @@ use sp1_derive::AlignedBorrow;
 
 use crate::air::SP1AirBuilder;
 use crate::air::Word;
+use crate::bytes::event::ByteRecord;
 use crate::bytes::ByteOpcode;
 use crate::disassembler::WORD_SIZE;
 use crate::runtime::ExecutionRecord;
@@ -54,8 +55,5 @@ impl<F: Field> NotOperation<F> {
                 .when(is_real)
                 .assert_eq(cols.value[i] + a[i], AB::F::from_canonical_u8(u8::MAX));
         }
-
-        // A dummy constraint to keep the degree 3.
-        builder.assert_zero(a[0] * a[0] * a[0] - a[0] * a[0] * a[0]);
     }
 }

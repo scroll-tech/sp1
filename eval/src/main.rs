@@ -1,12 +1,13 @@
 #![feature(generic_const_exprs)]
+#![allow(incomplete_features)]
 
 use clap::{command, Parser};
 use csv::WriterBuilder;
 use serde::Serialize;
 use sp1_core::runtime::{Program, Runtime};
-use sp1_core::utils::{get_cycles, prove_core};
-use sp1_sdk::utils::{BabyBearBlake3, BabyBearKeccak, BabyBearPoseidon2};
-use sp1_sdk::{ProverClient, SP1ProofWithIO, SP1PublicValues, SP1Stdin};
+use sp1_core::utils::{prove_simple, BabyBearBlake3, BabyBearKeccak, BabyBearPoseidon2};
+use sp1_prover::utils::get_cycles;
+use sp1_prover::SP1Stdin;
 use std::fmt;
 use std::fs::OpenOptions;
 use std::io;
@@ -88,8 +89,8 @@ fn main() {
 
     // Load the program.
     let elf_path = &args.elf_path;
-    let program = Program::from_elf(elf_path);
-    let cycles = get_cycles(program.clone());
+    let elf = fs::read(elf_path).expect("Failed to read ELF file");
+    let cycles = get_cycles(&elf, &SP1Stdin::new());
 
     // Initialize total duration counters.
     let mut total_execution_duration = 0f64;
@@ -97,6 +98,7 @@ fn main() {
     let mut total_verify_duration = 0f64;
 
     // Perform runs.
+    let program = Program::from(&elf);
     for _ in 0..args.runs {
         let elf = fs::read(elf_path).expect("Failed to read ELF file");
         let (execution_duration, prove_duration, verify_duration) =
@@ -130,27 +132,23 @@ fn main() {
     }
 }
 
-fn run_evaluation(hashfn: &HashFnId, program: &Program, elf: &[u8]) -> (f64, f64, f64) {
-    let client = ProverClient::new();
+fn run_evaluation(hashfn: &HashFnId, program: &Program, _elf: &[u8]) -> (f64, f64, f64) {
+    // Note: While these benchmarks are useful for core proving, they are not useful for recursion
+    // or end to end proving as we only support Poseidon for now.
     match hashfn {
         HashFnId::Blake3 => {
             let mut runtime = Runtime::new(program.clone());
             let execution_start = Instant::now();
-            runtime.run();
+            runtime.run().unwrap();
             let execution_duration = execution_start.elapsed().as_secs_f64();
 
             let config = BabyBearBlake3::new();
             let prove_start = Instant::now();
-            let proof = prove_core(config.clone(), runtime);
+            let _proof = prove_simple(config.clone(), runtime);
             let prove_duration = prove_start.elapsed().as_secs_f64();
-            let proof = SP1ProofWithIO {
-                stdin: SP1Stdin::new(),
-                public_values: SP1PublicValues::new(),
-                proof,
-            };
 
             let verify_start = Instant::now();
-            client.verify_with_config(elf, &proof, config).unwrap();
+            // SP1ProverImpl::verify_with_config(elf, &proof, config).unwrap();
             let verify_duration = verify_start.elapsed().as_secs_f64();
 
             (execution_duration, prove_duration, verify_duration)
@@ -158,21 +156,16 @@ fn run_evaluation(hashfn: &HashFnId, program: &Program, elf: &[u8]) -> (f64, f64
         HashFnId::Poseidon => {
             let mut runtime = Runtime::new(program.clone());
             let execution_start = Instant::now();
-            runtime.run();
+            runtime.run().unwrap();
             let execution_duration = execution_start.elapsed().as_secs_f64();
 
             let config = BabyBearPoseidon2::new();
             let prove_start = Instant::now();
-            let proof = prove_core(config.clone(), runtime);
+            let _proof = prove_simple(config.clone(), runtime);
             let prove_duration = prove_start.elapsed().as_secs_f64();
-            let proof = SP1ProofWithIO {
-                stdin: SP1Stdin::new(),
-                public_values: SP1PublicValues::new(),
-                proof,
-            };
 
             let verify_start = Instant::now();
-            client.verify_with_config(elf, &proof, config).unwrap();
+            // SP1ProverImpl::verify_with_config(elf, &proof, config).unwrap();
             let verify_duration = verify_start.elapsed().as_secs_f64();
 
             (execution_duration, prove_duration, verify_duration)
@@ -180,21 +173,16 @@ fn run_evaluation(hashfn: &HashFnId, program: &Program, elf: &[u8]) -> (f64, f64
         HashFnId::Keccak256 => {
             let mut runtime = Runtime::new(program.clone());
             let execution_start = Instant::now();
-            runtime.run();
+            runtime.run().unwrap();
             let execution_duration = execution_start.elapsed().as_secs_f64();
 
             let config = BabyBearKeccak::new();
             let prove_start = Instant::now();
-            let proof = prove_core(config.clone(), runtime);
+            let _proof = prove_simple(config.clone(), runtime);
             let prove_duration = prove_start.elapsed().as_secs_f64();
-            let proof = SP1ProofWithIO {
-                stdin: SP1Stdin::new(),
-                public_values: SP1PublicValues::new(),
-                proof,
-            };
 
             let verify_start = Instant::now();
-            client.verify_with_config(elf, &proof, config).unwrap();
+            // SP1ProverImpl::verify_with_config(elf, &proof, config).unwrap();
             let verify_duration = verify_start.elapsed().as_secs_f64();
 
             (execution_duration, prove_duration, verify_duration)

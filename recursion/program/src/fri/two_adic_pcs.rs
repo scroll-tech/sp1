@@ -19,7 +19,6 @@ use crate::challenger::DuplexChallengerVariable;
 use crate::challenger::FeltChallenger;
 use crate::commit::PcsVariable;
 
-#[allow(clippy::type_complexity)]
 pub fn verify_two_adic_pcs<C: Config>(
     builder: &mut Builder<C>,
     config: &FriConfigVariable<C>,
@@ -30,8 +29,11 @@ pub fn verify_two_adic_pcs<C: Config>(
     C::F: TwoAdicField,
     C::EF: TwoAdicField,
 {
-    let log_blowup = C::N::from_canonical_usize(config.log_blowup);
-    let blowup = C::N::from_canonical_usize(1 << config.log_blowup);
+    let mut input_ptr = builder.array::<FriFoldInput<_>>(1);
+    let g = builder.generator();
+
+    let log_blowup = config.log_blowup;
+    let blowup = config.log_blowup;
     let alpha = challenger.sample_ext(builder);
 
     builder.cycle_tracker("stage-d-1-verify-shape-and-sample-challenges");
@@ -116,19 +118,19 @@ pub fn verify_two_adic_pcs<C: Config>(
                             builder.eval(log_global_max_height - log_height);
                         let index_bits_shifted = index_bits.shift(builder, bits_reduced);
 
-                        let g = builder.generator();
                         let two_adic_generator = config.get_two_adic_generator(builder, log_height);
+                        builder.cycle_tracker("exp_reverse_bits_len");
                         let two_adic_generator_exp = builder.exp_reverse_bits_len(
                             two_adic_generator,
                             &index_bits_shifted,
                             log_height,
                         );
+                        builder.cycle_tracker("exp_reverse_bits_len");
                         let x: Felt<C::F> = builder.eval(two_adic_generator_exp * g);
 
                         builder.range(0, mat_points.len()).for_each(|l, builder| {
                             let z: Ext<C::F, C::EF> = builder.get(&mat_points, l);
                             let ps_at_z = builder.get(&mat_values, l);
-
                             let input = FriFoldInput {
                                 z,
                                 alpha,
@@ -139,13 +141,10 @@ pub fn verify_two_adic_pcs<C: Config>(
                                 alpha_pow: alpha_pow.clone(),
                                 ro: ro.clone(),
                             };
-
-                            let mut input_ptr = builder.array::<FriFoldInput<_>>(1);
                             builder.set_value(&mut input_ptr, 0, input);
 
-                            builder.range(0, ps_at_z.len()).for_each(|m, builder| {
-                                builder.push(DslIr::FriFold(m, input_ptr.clone()));
-                            });
+                            let ps_at_z_len = ps_at_z.len().materialize(builder);
+                            builder.push(DslIr::FriFold(ps_at_z_len, input_ptr.clone()));
                         });
                     });
             });
@@ -222,6 +221,7 @@ where
     }
 }
 
+#[derive(DslVariable, Clone)]
 pub struct TwoAdicFriPcsVariable<C: Config> {
     pub config: FriConfigVariable<C>,
 }
@@ -257,33 +257,32 @@ where
     }
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
 
     use std::cmp::Reverse;
+    use std::collections::VecDeque;
 
     use crate::challenger::CanObserveVariable;
     use crate::challenger::DuplexChallengerVariable;
     use crate::challenger::FeltChallenger;
-    use crate::fri::types::FriConfigVariable;
+    use crate::commit::PcsVariable;
     use crate::fri::types::TwoAdicPcsRoundVariable;
+    use crate::fri::TwoAdicFriPcsVariable;
     use crate::fri::TwoAdicMultiplicativeCosetVariable;
     use crate::hints::Hintable;
+    use crate::utils::const_fri_config;
     use itertools::Itertools;
+    use p3_baby_bear::BabyBear;
     use p3_challenger::CanObserve;
     use p3_challenger::FieldChallenger;
     use p3_commit::Pcs;
     use p3_commit::TwoAdicMultiplicativeCoset;
     use p3_field::AbstractField;
-    use p3_field::PrimeField32;
-    use p3_field::TwoAdicField;
-    use p3_fri::FriConfig;
     use p3_matrix::dense::RowMajorMatrix;
     use rand::rngs::OsRng;
-    use sp1_core::utils::inner_fri_config;
+    use sp1_core::utils::baby_bear_poseidon2::compressed_fri_config;
     use sp1_core::utils::inner_perm;
     use sp1_core::utils::InnerChallenge;
-    use sp1_core::utils::InnerChallengeMmcs;
     use sp1_core::utils::InnerChallenger;
     use sp1_core::utils::InnerCompress;
     use sp1_core::utils::InnerDft;
@@ -297,47 +296,18 @@ pub(crate) mod tests {
     use sp1_recursion_compiler::ir::Builder;
     use sp1_recursion_compiler::ir::Usize;
     use sp1_recursion_compiler::ir::Var;
-    use sp1_recursion_core::runtime::Runtime;
+    use sp1_recursion_core::air::Block;
+    use sp1_recursion_core::runtime::RecursionProgram;
     use sp1_recursion_core::runtime::DIGEST_SIZE;
 
-    use crate::commit::PcsVariable;
-    use crate::fri::TwoAdicFriPcsVariable;
-
-    pub fn const_fri_config(
-        builder: &mut Builder<InnerConfig>,
-        config: FriConfig<InnerChallengeMmcs>,
-    ) -> FriConfigVariable<InnerConfig> {
-        let two_addicity = InnerVal::TWO_ADICITY;
-        let mut generators = builder.dyn_array(two_addicity);
-        let mut subgroups = builder.dyn_array(two_addicity);
-        for i in 0..two_addicity {
-            let constant_generator = InnerVal::two_adic_generator(i);
-            builder.set(&mut generators, i, constant_generator);
-
-            let constant_domain = TwoAdicMultiplicativeCoset {
-                log_n: i,
-                shift: InnerVal::one(),
-            };
-            let domain_value: TwoAdicMultiplicativeCosetVariable<_> =
-                builder.constant(constant_domain);
-            builder.set(&mut subgroups, i, domain_value);
-        }
-        FriConfigVariable {
-            log_blowup: config.log_blowup,
-            num_queries: config.num_queries,
-            proof_of_work_bits: config.proof_of_work_bits,
-            subgroups,
-            generators,
-        }
-    }
-
-    #[allow(clippy::type_complexity)]
-    #[test]
-    fn test_two_adic_fri_pcs_single_batch() {
+    pub fn build_test_fri_with_cols_and_log2_rows(
+        nb_cols: usize,
+        nb_log2_rows: usize,
+    ) -> (RecursionProgram<BabyBear>, VecDeque<Vec<Block<BabyBear>>>) {
         let mut rng = &mut OsRng;
-        let log_degrees = &[10, 16];
+        let log_degrees = &[nb_log2_rows];
         let perm = inner_perm();
-        let fri_config = inner_fri_config();
+        let fri_config = compressed_fri_config();
         let hash = InnerHash::new(perm.clone());
         let compress = InnerCompress::new(perm.clone());
         let val_mmcs = InnerValMmcs::new(hash, compress);
@@ -358,7 +328,7 @@ pub(crate) mod tests {
                         &pcs_val,
                         1 << d,
                     ),
-                    RowMajorMatrix::<InnerVal>::rand(&mut rng, 1 << d, 10 + d),
+                    RowMajorMatrix::<InnerVal>::rand(&mut rng, 1 << d, nb_cols),
                 )
             })
             .sorted_by_key(|(dom, _)| Reverse(dom.log_n))
@@ -394,7 +364,7 @@ pub(crate) mod tests {
 
         // Test the recursive Pcs.
         let mut builder = Builder::<InnerConfig>::default();
-        let config = const_fri_config(&mut builder, inner_fri_config());
+        let config = const_fri_config(&mut builder, &compressed_fri_config());
         let pcs = TwoAdicFriPcsVariable { config };
         let rounds =
             builder.constant::<Array<_, TwoAdicPcsRoundVariable<_>>>(vec![(commit, os.clone())]);
@@ -424,132 +394,18 @@ pub(crate) mod tests {
         challenger.observe(&mut builder, commit);
         challenger.sample_ext(&mut builder);
         pcs.verify(&mut builder, rounds, proofvar, &mut challenger);
+        builder.halt();
 
         let program = builder.compile_program();
-        let mut runtime = Runtime::<InnerVal, InnerChallenge, _>::new(&program, perm.clone());
-        runtime.witness_stream.extend(proof.write());
-        runtime.run();
-        println!(
-            "The program executed successfully, number of cycles: {}",
-            runtime.clk.as_canonical_u32() / 4
-        );
+        let mut witness_stream = VecDeque::new();
+        witness_stream.extend(proof.write());
+        (program, witness_stream)
     }
 
-    #[allow(clippy::type_complexity)]
     #[test]
-    fn test_two_adic_fri_pcs_multi_batches() {
-        let mut rng = &mut OsRng;
-        let log_degrees = &[10, 16];
-        let perm = inner_perm();
-        let fri_config = inner_fri_config();
-        let hash = InnerHash::new(perm.clone());
-        let compress = InnerCompress::new(perm.clone());
-        let val_mmcs = InnerValMmcs::new(hash, compress);
-        let dft = InnerDft {};
-        let pcs_val: InnerPcs = InnerPcs::new(
-            log_degrees.iter().copied().max().unwrap(),
-            dft,
-            val_mmcs,
-            fri_config,
-        );
-
-        // Generate proof.
-        let num_of_batches = 3;
-
-        let mut batch_domains_and_polys = vec![];
-        let mut batches_commits = vec![];
-        let mut batches_prover_data = vec![];
-
-        for _ in 0..num_of_batches {
-            let domains_and_polys = log_degrees
-                .iter()
-                .map(|&d| {
-                    (
-                        <InnerPcs as Pcs<InnerChallenge, InnerChallenger>>::natural_domain_for_degree(
-                            &pcs_val,
-                            1 << d,
-                        ),
-                        RowMajorMatrix::<InnerVal>::rand(&mut rng, 1 << d, 10 + d),
-                    )
-                })
-                .sorted_by_key(|(dom, _)| Reverse(dom.log_n))
-                .collect::<Vec<_>>();
-            let (commit, data) = <InnerPcs as Pcs<InnerChallenge, InnerChallenger>>::commit(
-                &pcs_val,
-                domains_and_polys.clone(),
-            );
-
-            batch_domains_and_polys.push(domains_and_polys);
-            batches_commits.push(commit);
-            batches_prover_data.push(data);
-        }
-
-        let mut challenger = InnerChallenger::new(perm.clone());
-        for commit in batches_commits.iter() {
-            challenger.observe(*commit);
-        }
-
-        let zeta = challenger.sample_ext_element::<InnerChallenge>();
-        let points = log_degrees.iter().map(|_| vec![zeta]).collect::<Vec<_>>();
-
-        let data_and_points = batches_prover_data
-            .iter()
-            .map(|data| (data, points.clone()))
-            .collect::<Vec<_>>();
-        let (opening, proof) = pcs_val.open(data_and_points, &mut challenger);
-
-        // Verify proof.
-        let mut challenger = InnerChallenger::new(perm.clone());
-        for commit in batches_commits.iter() {
-            challenger.observe(*commit);
-        }
-        challenger.sample_ext_element::<InnerChallenge>();
-
-        let rounds_val = batches_commits
-            .clone()
-            .into_iter()
-            .zip(batch_domains_and_polys)
-            .zip(opening)
-            .map(|((commit, domains_and_polys), open_vals)| {
-                let os = domains_and_polys
-                    .iter()
-                    .zip(open_vals)
-                    .map(|((domain, _), mat_openings)| {
-                        (*domain, vec![(zeta, mat_openings[0].clone())])
-                    })
-                    .collect();
-                (commit, os)
-            })
-            .collect::<Vec<_>>();
-
-        pcs_val
-            .verify(rounds_val.clone(), &proof, &mut challenger)
-            .unwrap();
-
-        // Test the recursive Pcs.
-        let mut builder = Builder::<InnerConfig>::default();
-        let config = const_fri_config(&mut builder, inner_fri_config());
-        let pcs = TwoAdicFriPcsVariable { config };
-        let rounds = builder.constant::<Array<_, TwoAdicPcsRoundVariable<_>>>(rounds_val);
-
-        // // Test proof verification.
-        let proofvar = InnerPcsProof::read(&mut builder);
-        let mut challenger = DuplexChallengerVariable::new(&mut builder);
-        for commit in batches_commits {
-            let commit: [InnerVal; DIGEST_SIZE] = commit.into();
-            let commit = builder.constant::<Array<_, _>>(commit.to_vec());
-            challenger.observe(&mut builder, commit);
-        }
-        challenger.sample_ext(&mut builder);
-        pcs.verify(&mut builder, rounds, proofvar, &mut challenger);
-
-        let program = builder.compile_program();
-        let mut runtime = Runtime::<InnerVal, InnerChallenge, _>::new(&program, perm.clone());
-        runtime.witness_stream.extend(proof.write());
-        runtime.run();
-        println!(
-            "The program executed successfully, number of cycles: {}",
-            runtime.clk.as_canonical_u32() / 4
-        );
+    fn test_two_adic_fri_pcs_single_batch() {
+        use sp1_recursion_core::stark::utils::{run_test_recursion, TestConfig};
+        let (program, witness) = build_test_fri_with_cols_and_log2_rows(10, 16);
+        run_test_recursion(program, Some(witness), TestConfig::All);
     }
 }

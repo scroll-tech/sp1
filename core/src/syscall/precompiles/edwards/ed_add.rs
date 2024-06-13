@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 
 use num::BigUint;
 use num::Zero;
-use p3_air::AirBuilder;
+
 use p3_air::{Air, BaseAir};
 use p3_field::AbstractField;
 use p3_field::PrimeField32;
@@ -14,18 +14,21 @@ use p3_matrix::Matrix;
 use p3_maybe_rayon::prelude::IntoParallelRefIterator;
 use p3_maybe_rayon::prelude::ParallelIterator;
 use sp1_derive::AlignedBorrow;
-use tracing::instrument;
 
+use super::{NUM_LIMBS, WORDS_CURVE_POINT};
+use crate::air::BaseAirBuilder;
 use crate::air::MachineAir;
 use crate::air::SP1AirBuilder;
+use crate::bytes::event::ByteRecord;
 use crate::bytes::ByteLookupEvent;
-use crate::memory::MemoryCols;
+use crate::memory::value_as_limbs;
 use crate::memory::MemoryReadCols;
 use crate::memory::MemoryWriteCols;
 use crate::operations::field::field_den::FieldDenCols;
 use crate::operations::field::field_inner_product::FieldInnerProductCols;
 use crate::operations::field::field_op::FieldOpCols;
 use crate::operations::field::field_op::FieldOperation;
+use crate::operations::field::params::FieldParameters;
 use crate::runtime::ExecutionRecord;
 use crate::runtime::Program;
 use crate::runtime::Syscall;
@@ -34,7 +37,6 @@ use crate::syscall::precompiles::create_ec_add_event;
 use crate::syscall::precompiles::SyscallContext;
 use crate::utils::ec::edwards::ed25519::Ed25519BaseField;
 use crate::utils::ec::edwards::EdwardsParameters;
-use crate::utils::ec::field::FieldParameters;
 use crate::utils::ec::AffinePoint;
 use crate::utils::ec::EllipticCurve;
 use crate::utils::limbs_from_prev_access;
@@ -53,8 +55,8 @@ pub struct EdAddAssignCols<T> {
     pub clk: T,
     pub p_ptr: T,
     pub q_ptr: T,
-    pub p_access: [MemoryWriteCols<T>; Ed25519BaseField::NB_LIMBS],
-    pub q_access: [MemoryReadCols<T>; Ed25519BaseField::NB_LIMBS],
+    pub p_access: [MemoryWriteCols<T>; WORDS_CURVE_POINT],
+    pub q_access: [MemoryReadCols<T>; WORDS_CURVE_POINT],
     pub(crate) x3_numerator: FieldInnerProductCols<T, Ed25519BaseField>,
     pub(crate) y3_numerator: FieldInnerProductCols<T, Ed25519BaseField>,
     pub(crate) x1_mul_y1: FieldOpCols<T, Ed25519BaseField>,
@@ -77,27 +79,45 @@ impl<E: EllipticCurve + EdwardsParameters> EdAddAssignChip<E> {
         }
     }
     fn populate_field_ops<F: PrimeField32>(
+        record: &mut impl ByteRecord,
+        shard: u32,
         cols: &mut EdAddAssignCols<F>,
         p_x: BigUint,
         p_y: BigUint,
         q_x: BigUint,
         q_y: BigUint,
     ) {
-        let x3_numerator = cols
-            .x3_numerator
-            .populate(&[p_x.clone(), q_x.clone()], &[q_y.clone(), p_y.clone()]);
-        let y3_numerator = cols
-            .y3_numerator
-            .populate(&[p_y.clone(), p_x.clone()], &[q_y.clone(), q_x.clone()]);
-        let x1_mul_y1 = cols.x1_mul_y1.populate(&p_x, &p_y, FieldOperation::Mul);
-        let x2_mul_y2 = cols.x2_mul_y2.populate(&q_x, &q_y, FieldOperation::Mul);
-        let f = cols.f.populate(&x1_mul_y1, &x2_mul_y2, FieldOperation::Mul);
+        let x3_numerator = cols.x3_numerator.populate(
+            record,
+            shard,
+            &[p_x.clone(), q_x.clone()],
+            &[q_y.clone(), p_y.clone()],
+        );
+        let y3_numerator = cols.y3_numerator.populate(
+            record,
+            shard,
+            &[p_y.clone(), p_x.clone()],
+            &[q_y.clone(), q_x.clone()],
+        );
+        let x1_mul_y1 = cols
+            .x1_mul_y1
+            .populate(record, shard, &p_x, &p_y, FieldOperation::Mul);
+        let x2_mul_y2 = cols
+            .x2_mul_y2
+            .populate(record, shard, &q_x, &q_y, FieldOperation::Mul);
+        let f = cols
+            .f
+            .populate(record, shard, &x1_mul_y1, &x2_mul_y2, FieldOperation::Mul);
 
         let d = E::d_biguint();
-        let d_mul_f = cols.d_mul_f.populate(&f, &d, FieldOperation::Mul);
+        let d_mul_f = cols
+            .d_mul_f
+            .populate(record, shard, &f, &d, FieldOperation::Mul);
 
-        cols.x3_ins.populate(&x3_numerator, &d_mul_f, true);
-        cols.y3_ins.populate(&y3_numerator, &d_mul_f, false);
+        cols.x3_ins
+            .populate(record, shard, &x3_numerator, &d_mul_f, true);
+        cols.y3_ins
+            .populate(record, shard, &y3_numerator, &d_mul_f, false);
     }
 }
 
@@ -122,7 +142,6 @@ impl<F: PrimeField32, E: EllipticCurve + EdwardsParameters> MachineAir<F> for Ed
         "EdAddAssign".to_string()
     }
 
-    #[instrument(name = "generate ed add trace", level = "debug", skip_all)]
     fn generate_trace(
         &self,
         input: &ExecutionRecord,
@@ -153,15 +172,23 @@ impl<F: PrimeField32, E: EllipticCurve + EdwardsParameters> MachineAir<F> for Ed
                 cols.p_ptr = F::from_canonical_u32(event.p_ptr);
                 cols.q_ptr = F::from_canonical_u32(event.q_ptr);
 
-                Self::populate_field_ops(cols, p_x, p_y, q_x, q_y);
+                let mut new_byte_lookup_events = Vec::new();
+                Self::populate_field_ops(
+                    &mut new_byte_lookup_events,
+                    event.shard,
+                    cols,
+                    p_x,
+                    p_y,
+                    q_x,
+                    q_y,
+                );
 
                 // Populate the memory access columns.
-                let mut new_byte_lookup_events = Vec::new();
-                for i in 0..16 {
+                for i in 0..WORDS_CURVE_POINT {
                     cols.q_access[i]
                         .populate(event.q_memory_records[i], &mut new_byte_lookup_events);
                 }
-                for i in 0..16 {
+                for i in 0..WORDS_CURVE_POINT {
                     cols.p_access[i]
                         .populate(event.p_memory_records[i], &mut new_byte_lookup_events);
                 }
@@ -178,7 +205,15 @@ impl<F: PrimeField32, E: EllipticCurve + EdwardsParameters> MachineAir<F> for Ed
             let mut row = [F::zero(); NUM_ED_ADD_COLS];
             let cols: &mut EdAddAssignCols<F> = row.as_mut_slice().borrow_mut();
             let zero = BigUint::zero();
-            Self::populate_field_ops(cols, zero.clone(), zero.clone(), zero.clone(), zero);
+            Self::populate_field_ops(
+                &mut vec![],
+                0,
+                cols,
+                zero.clone(),
+                zero.clone(),
+                zero.clone(),
+                zero,
+            );
             row
         });
 
@@ -215,68 +250,103 @@ where
         let y2 = limbs_from_prev_access(&row.q_access[8..16]);
 
         // x3_numerator = x1 * y2 + x2 * y1.
-        row.x3_numerator.eval::<AB>(builder, &[x1, x2], &[y2, y1]);
+        row.x3_numerator
+            .eval(builder, &[x1, x2], &[y2, y1], row.shard, row.is_real);
 
         // y3_numerator = y1 * y2 + x1 * x2.
-        row.y3_numerator.eval::<AB>(builder, &[y1, x1], &[y2, x2]);
+        row.y3_numerator
+            .eval(builder, &[y1, x1], &[y2, x2], row.shard, row.is_real);
 
         // f = x1 * x2 * y1 * y2.
-        row.x1_mul_y1
-            .eval::<AB, _, _>(builder, &x1, &y1, FieldOperation::Mul);
-        row.x2_mul_y2
-            .eval::<AB, _, _>(builder, &x2, &y2, FieldOperation::Mul);
+        row.x1_mul_y1.eval(
+            builder,
+            &x1,
+            &y1,
+            FieldOperation::Mul,
+            row.shard,
+            row.is_real,
+        );
+        row.x2_mul_y2.eval(
+            builder,
+            &x2,
+            &y2,
+            FieldOperation::Mul,
+            row.shard,
+            row.is_real,
+        );
 
         let x1_mul_y1 = row.x1_mul_y1.result;
         let x2_mul_y2 = row.x2_mul_y2.result;
-        row.f
-            .eval::<AB, _, _>(builder, &x1_mul_y1, &x2_mul_y2, FieldOperation::Mul);
+        row.f.eval(
+            builder,
+            &x1_mul_y1,
+            &x2_mul_y2,
+            FieldOperation::Mul,
+            row.shard,
+            row.is_real,
+        );
 
         // d * f.
         let f = row.f.result;
         let d_biguint = E::d_biguint();
         let d_const = E::BaseField::to_limbs_field::<AB::Expr, _>(&d_biguint);
-        row.d_mul_f
-            .eval::<AB, _, _>(builder, &f, &d_const, FieldOperation::Mul);
+        row.d_mul_f.eval(
+            builder,
+            &f,
+            &d_const,
+            FieldOperation::Mul,
+            row.shard,
+            row.is_real,
+        );
 
         let d_mul_f = row.d_mul_f.result;
 
         // x3 = x3_numerator / (1 + d * f).
-        row.x3_ins
-            .eval::<AB>(builder, &row.x3_numerator.result, &d_mul_f, true);
+        row.x3_ins.eval(
+            builder,
+            &row.x3_numerator.result,
+            &d_mul_f,
+            true,
+            row.shard,
+            row.is_real,
+        );
 
         // y3 = y3_numerator / (1 - d * f).
-        row.y3_ins
-            .eval::<AB>(builder, &row.y3_numerator.result, &d_mul_f, false);
+        row.y3_ins.eval(
+            builder,
+            &row.y3_numerator.result,
+            &d_mul_f,
+            false,
+            row.shard,
+            row.is_real,
+        );
 
         // Constraint self.p_access.value = [self.x3_ins.result, self.y3_ins.result]
         // This is to ensure that p_access is updated with the new value.
-        for i in 0..E::BaseField::NB_LIMBS {
-            builder
-                .when(row.is_real)
-                .assert_eq(row.x3_ins.result[i], row.p_access[i / 4].value()[i % 4]);
-            builder
-                .when(row.is_real)
-                .assert_eq(row.y3_ins.result[i], row.p_access[8 + i / 4].value()[i % 4]);
-        }
+        let p_access_vec = value_as_limbs(&row.p_access);
+        builder
+            .when(row.is_real)
+            .assert_all_eq(row.x3_ins.result, p_access_vec[0..NUM_LIMBS].to_vec());
+        builder.when(row.is_real).assert_all_eq(
+            row.y3_ins.result,
+            p_access_vec[NUM_LIMBS..NUM_LIMBS * 2].to_vec(),
+        );
 
-        for i in 0..16 {
-            builder.eval_memory_access(
-                row.shard,
-                row.clk, // clk + 0 -> Memory
-                row.q_ptr + AB::F::from_canonical_u32(i * 4),
-                &row.q_access[i as usize],
-                row.is_real,
-            );
-        }
-        for i in 0..16 {
-            builder.eval_memory_access(
-                row.shard,
-                row.clk + AB::F::from_canonical_u32(1), // The clk for p is moved by 1.
-                row.p_ptr + AB::F::from_canonical_u32(i * 4),
-                &row.p_access[i as usize],
-                row.is_real,
-            );
-        }
+        builder.eval_memory_access_slice(
+            row.shard,
+            row.clk.into(),
+            row.q_ptr,
+            &row.q_access,
+            row.is_real,
+        );
+
+        builder.eval_memory_access_slice(
+            row.shard,
+            row.clk + AB::F::from_canonical_u32(1),
+            row.p_ptr,
+            &row.p_access,
+            row.is_real,
+        );
 
         builder.receive_syscall(
             row.shard,

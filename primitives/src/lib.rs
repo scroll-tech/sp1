@@ -1102,7 +1102,7 @@ lazy_static! {
 pub fn poseidon2_init(
 ) -> Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, 16, 7> {
     const ROUNDS_F: usize = 8;
-    const ROUNDS_P: usize = 22;
+    const ROUNDS_P: usize = 13;
     let mut round_constants = RC_16_30.to_vec();
     let internal_start = ROUNDS_F / 2;
     let internal_end = (ROUNDS_F / 2) + ROUNDS_P;
@@ -1149,4 +1149,17 @@ lazy_static! {
         8,
         8,
     > = poseidon2_hasher();
+}
+
+/// Append a single deferred proof to a hash chain of deferred proofs.
+pub fn hash_deferred_proof(
+    prev_digest: &[BabyBear; 8],
+    vk_digest: &[BabyBear; 8],
+    pv_digest: &[BabyBear; 32],
+) -> [BabyBear; 8] {
+    let mut inputs = Vec::with_capacity(48);
+    inputs.extend_from_slice(prev_digest);
+    inputs.extend_from_slice(vk_digest);
+    inputs.extend_from_slice(pv_digest);
+    poseidon2_hash(inputs.to_vec())
 }

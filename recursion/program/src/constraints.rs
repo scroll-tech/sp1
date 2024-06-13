@@ -14,8 +14,8 @@ use sp1_recursion_compiler::prelude::ExtConst;
 use sp1_recursion_compiler::prelude::{Builder, Ext, SymbolicExt};
 
 use crate::commit::PolynomialSpaceVariable;
-use crate::folder::RecursiveVerifierConstraintFolder;
 use crate::fri::TwoAdicMultiplicativeCosetVariable;
+use crate::stark::RecursiveVerifierConstraintFolder;
 use crate::stark::StarkVerifier;
 use crate::types::ChipOpenedValuesVariable;
 use crate::types::ChipOpening;
@@ -55,15 +55,12 @@ where
             next: unflatten(&opening.permutation.next),
         };
 
-        let zero: Ext<SC::Val, SC::Challenge> = builder.eval(SC::Val::zero());
-
         let mut folder_pv = Vec::new();
         for i in 0..PROOF_MAX_NUM_PVS {
             folder_pv.push(builder.get(&public_values, i));
         }
 
-        let mut folder = RecursiveVerifierConstraintFolder {
-            builder,
+        let mut folder = RecursiveVerifierConstraintFolder::<C> {
             preprocessed: opening.preprocessed.view(),
             main: opening.main.view(),
             perm: perm_opening.view(),
@@ -74,11 +71,12 @@ where
             is_last_row: selectors.is_last_row,
             is_transition: selectors.is_transition,
             alpha,
-            accumulator: zero,
+            accumulator: SymbolicExt::zero(),
+            _marker: std::marker::PhantomData,
         };
 
         chip.eval(&mut folder);
-        folder.accumulator
+        builder.eval(folder.accumulator)
     }
 
     fn recompute_quotient(
@@ -96,8 +94,6 @@ where
                     .enumerate()
                     .filter(|(j, _)| *j != i)
                     .map(|(_, other_domain)| {
-                        // Calculate: other_domain.zp_at_point(zeta)
-                        //     * other_domain.zp_at_point(domain.first_point()).inverse()
                         let first_point: Ext<_, _> = builder.eval(domain.first_point());
                         other_domain.zp_at_point(builder, zeta)
                             * other_domain.zp_at_point(builder, first_point).inverse()
@@ -125,8 +121,7 @@ where
         )
     }
 
-    /// Reference: `[sp1_core::stark::Verifier::verify_constraints]`
-    #[allow(clippy::too_many_arguments)]
+    /// Reference: [sp1_core::stark::Verifier::verify_constraints]
     pub fn verify_constraints<A>(
         builder: &mut Builder<C>,
         chip: &MachineChip<SC, A>,
@@ -165,18 +160,17 @@ mod tests {
     use itertools::{izip, Itertools};
     use serde::{de::DeserializeOwned, Serialize};
     use sp1_core::{
+        io::SP1Stdin,
         runtime::Program,
         stark::{
-            Chip, Com, Dom, MachineStark, OpeningProof, PcsProverData, RiscvAir, ShardCommitment,
-            ShardMainData, ShardProof, StarkGenericConfig,
+            Chip, Com, Dom, OpeningProof, PcsProverData, RiscvAir, ShardCommitment, ShardMainData,
+            ShardProof, StarkGenericConfig, StarkMachine,
         },
         utils::BabyBearPoseidon2,
     };
-    use sp1_recursion_core::runtime::Runtime;
-    use sp1_sdk::{ProverClient, SP1Stdin};
+    use sp1_recursion_core::stark::utils::{run_test_recursion, TestConfig};
 
     use p3_challenger::{CanObserve, FieldChallenger};
-    use p3_field::PrimeField32;
     use sp1_recursion_compiler::{asm::AsmBuilder, prelude::ExtConst};
 
     use p3_commit::{Pcs, PolynomialSpace};
@@ -185,7 +179,7 @@ mod tests {
 
     #[allow(clippy::type_complexity)]
     fn get_shard_data<'a, SC>(
-        machine: &'a MachineStark<SC, RiscvAir<SC::Val>>,
+        machine: &'a StarkMachine<SC, RiscvAir<SC::Val>>,
         proof: &'a ShardProof<SC>,
         challenger: &mut SC::Challenger,
     ) -> (
@@ -276,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_constraints_whole() {
+    fn test_verify_constraints() {
         type SC = BabyBearPoseidon2;
         type F = <SC as StarkGenericConfig>::Val;
         type EF = <SC as StarkGenericConfig>::Challenge;
@@ -284,23 +278,17 @@ mod tests {
 
         // Generate a dummy proof.
         sp1_core::utils::setup_logger();
-        let elf =
-            include_bytes!("../../../examples/fibonacci/program/elf/riscv32im-succinct-zkvm-elf");
+        let elf = include_bytes!("../../../tests/fibonacci/elf/riscv32im-succinct-zkvm-elf");
 
         let machine = A::machine(SC::default());
         let (_, vk) = machine.setup(&Program::from(elf));
         let mut challenger = machine.config().challenger();
-        let client = ProverClient::new();
-        let proof = client
-            .prove_local(elf, SP1Stdin::new(), machine.config().clone())
-            .unwrap();
-        client
-            .verify_with_config(elf, &proof, machine.config().clone())
-            .unwrap();
+        let (proof, _) =
+            sp1_core::utils::prove(Program::from(elf), &SP1Stdin::new(), SC::default()).unwrap();
+        machine.verify(&vk, &proof, &mut challenger).unwrap();
 
-        let proof = proof.proof;
         println!("Proof generated and verified successfully");
-
+        let mut challenger = machine.config().challenger();
         vk.observe_into(&mut challenger);
         proof.shard_proofs.iter().for_each(|proof| {
             challenger.observe(proof.commitment.main_commit);
@@ -357,14 +345,9 @@ mod tests {
             }
             break;
         }
+        builder.halt();
 
         let program = builder.compile_program();
-
-        let mut runtime = Runtime::<F, EF, _>::new(&program, machine.config().perm.clone());
-        runtime.run();
-        println!(
-            "The program executed successfully, number of cycles: {}",
-            runtime.clk.as_canonical_u32() / 4
-        );
+        run_test_recursion(program, None, TestConfig::All);
     }
 }

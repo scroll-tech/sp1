@@ -54,10 +54,10 @@ impl<C: Config> Builder<C> {
     }
 
     /// Exponentializes a variable to an array of bits in little endian.
-    pub fn exp_bits<V: Variable<C>>(&mut self, x: V, power_bits: &Array<C, Var<C::N>>) -> V
+    pub fn exp_bits<V>(&mut self, x: V, power_bits: &Array<C, Var<C::N>>) -> V
     where
         V::Expression: AbstractField,
-        V: Copy + Mul<Output = V::Expression>,
+        V: Copy + Mul<Output = V::Expression> + Variable<C>,
     {
         let result = self.eval(V::Expression::one());
         let power_f: V = self.eval(x);
@@ -90,7 +90,7 @@ impl<C: Config> Builder<C> {
         x: Ext<C::F, C::EF>,
         power_bits: Vec<Var<C::N>>,
     ) -> Ext<C::F, C::EF> {
-        let mut result = self.eval(SymbolicExt::Const(C::EF::one()));
+        let mut result = self.eval(SymbolicExt::from_f(C::EF::one()));
         let mut power_f: Ext<_, _> = self.eval(x);
         for i in 0..power_bits.len() {
             let bit = power_bits[i];
@@ -104,7 +104,7 @@ impl<C: Config> Builder<C> {
     /// Exponetiates a varibale to a list of reversed bits with a given length.
     ///
     /// Reference: [p3_util::reverse_bits_len]
-    pub fn exp_reverse_bits_len<V: Variable<C>>(
+    pub fn exp_reverse_bits_len<V>(
         &mut self,
         x: V,
         power_bits: &Array<C, Var<C::N>>,
@@ -112,12 +112,13 @@ impl<C: Config> Builder<C> {
     ) -> V
     where
         V::Expression: AbstractField,
-        V: Copy + Mul<Output = V::Expression>,
+        V: Copy + Mul<Output = V::Expression> + Variable<C>,
     {
         let result = self.eval(V::Expression::one());
         let power_f: V = self.eval(x);
         let bit_len = bit_len.into().materialize(self);
         let bit_len_plus_one: Var<_> = self.eval(bit_len + C::N::one());
+
         self.range(1, bit_len_plus_one).for_each(|i, builder| {
             let index: Var<C::N> = builder.eval(bit_len - i);
             let bit = builder.get(power_bits, index);
@@ -155,13 +156,13 @@ impl<C: Config> Builder<C> {
     }
 
     /// Exponentiates a variable to a list of bits in little endian insid a circuit.
-    pub fn exp_power_of_2_v_circuit<V: Variable<C>>(
+    pub fn exp_power_of_2_v_circuit<V>(
         &mut self,
         base: impl Into<V::Expression>,
         power_log: usize,
     ) -> V
     where
-        V: Copy + Mul<Output = V::Expression>,
+        V: Copy + Mul<Output = V::Expression> + Variable<C>,
     {
         let mut result: V = self.eval(base);
         for _ in 0..power_log {
@@ -184,11 +185,18 @@ impl<C: Config> Builder<C> {
     /// Creates an ext from a slice of felts.
     pub fn ext_from_base_slice(&mut self, arr: &[Felt<C::F>]) -> Ext<C::F, C::EF> {
         assert!(arr.len() <= <C::EF as AbstractExtensionField::<C::F>>::D);
-        let mut res = SymbolicExt::Const(C::EF::zero());
+        let mut res = SymbolicExt::from_f(C::EF::zero());
         for i in 0..arr.len() {
-            res += arr[i] * SymbolicExt::Const(C::EF::monomial(i));
+            res += arr[i] * SymbolicExt::from_f(C::EF::monomial(i));
         }
         self.eval(res)
+    }
+
+    pub fn felts2ext(&mut self, felts: &[Felt<C::F>]) -> Ext<C::F, C::EF> {
+        assert_eq!(felts.len(), 4);
+        let out: Ext<C::F, C::EF> = self.uninit();
+        self.push(DslIr::CircuitFelts2Ext(felts.try_into().unwrap(), out));
+        out
     }
 
     /// Converts an ext to a slice of felts.

@@ -6,6 +6,7 @@ use sp1_derive::AlignedBorrow;
 use crate::air::SP1AirBuilder;
 use crate::air::Word;
 use crate::air::WORD_SIZE;
+use crate::bytes::event::ByteRecord;
 use crate::runtime::ExecutionRecord;
 
 /// A set of columns needed to compute the sum of five words.
@@ -163,8 +164,5 @@ impl<F: Field> Add5Operation<F> {
                 builder_is_real.assert_eq(cols.carry[i] * base, overflow.clone());
             }
         }
-
-        // Degree 3 constraint to avoid "OodEvaluationMismatch".
-        builder.assert_zero(is_real * is_real * is_real - is_real * is_real * is_real);
     }
 }
