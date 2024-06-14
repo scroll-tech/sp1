@@ -3,6 +3,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use strum_macros::EnumIter;
+use typenum::{U16, U32, U64, U8};
 
 use crate::runtime::{Register, Runtime};
 use crate::stark::Blake3CompressInnerChip;
@@ -16,8 +17,9 @@ use crate::syscall::precompiles::weierstrass::WeierstrassAddAssignChip;
 use crate::syscall::precompiles::weierstrass::WeierstrassDecompressChip;
 use crate::syscall::precompiles::weierstrass::WeierstrassDoubleAssignChip;
 use crate::syscall::{
-    SyscallCommit, SyscallCommitDeferred, SyscallEnterUnconstrained, SyscallExitUnconstrained,
-    SyscallHalt, SyscallHintLen, SyscallHintRead, SyscallVerifySP1Proof, SyscallWrite,
+    MemCopyChip, SyscallCommit, SyscallCommitDeferred, SyscallEnterUnconstrained,
+    SyscallExitUnconstrained, SyscallHalt, SyscallHintLen, SyscallHintRead, SyscallVerifySP1Proof,
+    SyscallWrite,
 };
 use crate::utils::ec::edwards::ed25519::{Ed25519, Ed25519Parameters};
 use crate::utils::ec::weierstrass::bls12_381::Bls12381;
@@ -110,6 +112,12 @@ pub enum SyscallCode {
 
     /// Execute the `BN254_SCALAR_MAC` precompile.
     BN254_SCALAR_MAC = 0x00_01_01_21,
+
+    /// Execute the `MEMCPY_32` precompile.
+    MEMCPY_32 = 0x00_00_01_30,
+
+    /// Execute the `MEMCPY_64` precompile.
+    MEMCPY_64 = 0x00_00_01_31,
 }
 
 impl SyscallCode {
@@ -142,6 +150,8 @@ impl SyscallCode {
             0x00_00_01_1C => SyscallCode::BLS12381_DECOMPRESS,
             0x00_01_01_20 => SyscallCode::BN254_SCALAR_MUL,
             0x00_01_01_21 => SyscallCode::BN254_SCALAR_MAC,
+            0x00_00_01_30 => SyscallCode::MEMCPY_32,
+            0x00_00_01_31 => SyscallCode::MEMCPY_64,
             _ => panic!("invalid syscall number: {}", value),
         }
     }
@@ -362,6 +372,15 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
     syscall_map.insert(
         SyscallCode::BN254_SCALAR_MAC,
         Arc::new(Bn254ScalarMacChip::new()),
+    );
+
+    syscall_map.insert(
+        SyscallCode::MEMCPY_32,
+        Arc::new(MemCopyChip::<U8, U32>::new()),
+    );
+    syscall_map.insert(
+        SyscallCode::MEMCPY_64,
+        Arc::new(MemCopyChip::<U16, U64>::new()),
     );
 
     syscall_map

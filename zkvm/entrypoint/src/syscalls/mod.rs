@@ -111,3 +111,9 @@ pub const BN254_SCALAR_MUL: u32 = 0x00_01_01_20;
 
 /// Executes the `BN254_SCALAR_MAC` precompile
 pub const BN254_SCALAR_MAC: u32 = 0x00_01_01_21;
+
+/// Executes the `MEMCPY_32` precompile
+pub const MEMCPY_32: u32 = 0x00_00_01_30;
+
+/// Executes the `MEMCPY_64` precompile
+pub const MEMCPY_64: u32 = 0x00_00_01_31;
