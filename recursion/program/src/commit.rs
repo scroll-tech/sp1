@@ -3,10 +3,9 @@ use sp1_recursion_compiler::ir::{Array, Builder, Config, Ext, FromConstant, Usiz
 
 use crate::fri::types::{FriConfigVariable, TwoAdicPcsRoundVariable};
 
+/// Reference: [p3_commit::PolynomialSpace]
 pub trait PolynomialSpaceVariable<C: Config>: Sized + FromConstant<C> {
     type Constant: PolynomialSpace<Val = C::F>;
-
-    // fn from_constant(builder: &mut Builder<C>, constant: Self::Constant) -> Self;
 
     fn next_point(&self, builder: &mut Builder<C>, point: Ext<C::F, C::EF>) -> Ext<C::F, C::EF>;
 
@@ -18,7 +17,14 @@ pub trait PolynomialSpaceVariable<C: Config>: Sized + FromConstant<C> {
 
     fn zp_at_point(&self, builder: &mut Builder<C>, point: Ext<C::F, C::EF>) -> Ext<C::F, C::EF>;
 
-    fn split_domains(&self, builder: &mut Builder<C>, log_num_chunks: usize) -> Vec<Self>;
+    fn split_domains(
+        &self,
+        builder: &mut Builder<C>,
+        log_num_chunks: impl Into<Usize<C::N>>,
+        num_chunks: impl Into<Usize<C::N>>,
+    ) -> Array<C, Self>;
+
+    fn split_domains_const(&self, _: &mut Builder<C>, log_num_chunks: usize) -> Vec<Self>;
 
     fn create_disjoint_domain(
         &self,
@@ -28,6 +34,7 @@ pub trait PolynomialSpaceVariable<C: Config>: Sized + FromConstant<C> {
     ) -> Self;
 }
 
+/// Reference: [p3_commit::Pcs]
 pub trait PcsVariable<C: Config, Challenger> {
     type Domain: PolynomialSpaceVariable<C>;
 
@@ -41,7 +48,6 @@ pub trait PcsVariable<C: Config, Challenger> {
         log_degree: Usize<C::N>,
     ) -> Self::Domain;
 
-    // Todo: change TwoAdicPcsRoundVariable to RoundVariable
     fn verify(
         &self,
         builder: &mut Builder<C>,

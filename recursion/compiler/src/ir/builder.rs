@@ -2,7 +2,6 @@ use std::{iter::Zip, vec::IntoIter};
 
 use backtrace::Backtrace;
 use p3_field::AbstractField;
-use sp1_recursion_core::runtime::PV_BUFFER_MAX_SIZE;
 
 use super::{
     Array, Config, DslIr, Ext, Felt, FromConstant, SymbolicExt, SymbolicFelt, SymbolicUsize,
@@ -34,7 +33,7 @@ impl<T> From<Vec<T>> for TracedVec<T> {
 }
 
 impl<T> TracedVec<T> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             vec: Vec::new(),
             traces: Vec::new(),
@@ -43,11 +42,21 @@ impl<T> TracedVec<T> {
 
     pub fn push(&mut self, value: T) {
         self.vec.push(value);
-        match std::env::var("SP1_DEBUG") {
-            Ok(_) => {
+        self.traces.push(None);
+    }
+
+    /// Pushes a value to the vector and records a backtrace if SP1_DEBUG is enabled
+    pub fn trace_push(&mut self, value: T) {
+        self.vec.push(value);
+        match std::env::var("SP1_DEBUG")
+            .unwrap_or("false".to_string())
+            .to_lowercase()
+            .as_str()
+        {
+            "true" => {
                 self.traces.push(Some(Backtrace::new_unresolved()));
             }
-            Err(_) => {
+            _ => {
                 self.traces.push(None);
             }
         };
@@ -87,36 +96,47 @@ pub struct Builder<C: Config> {
     pub(crate) ext_count: u32,
     pub(crate) var_count: u32,
     pub operations: TracedVec<DslIr<C>>,
-    pub nb_public_values: Option<Var<C::N>>,
-    pub public_values_buffer: Option<Array<C, Felt<C::F>>>,
-    pub witness_var_count: u32,
-    pub witness_felt_count: u32,
-    pub witness_ext_count: u32,
-    pub debug: bool,
-    pub po2_table: Option<Array<C, Var<C::N>>>,
+    pub(crate) nb_public_values: Option<Var<C::N>>,
+    pub(crate) witness_var_count: u32,
+    pub(crate) witness_felt_count: u32,
+    pub(crate) witness_ext_count: u32,
+    pub(crate) debug: bool,
+    pub(crate) is_sub_builder: bool,
 }
 
 impl<C: Config> Builder<C> {
     /// Creates a new builder with a given number of counts for each type.
-    pub fn new(var_count: u32, felt_count: u32, ext_count: u32) -> Self {
+    pub fn new_sub_builder(
+        var_count: u32,
+        felt_count: u32,
+        ext_count: u32,
+        nb_public_values: Option<Var<C::N>>,
+        debug: bool,
+    ) -> Self {
         Self {
             felt_count,
             ext_count,
             var_count,
+            // Witness counts are only used when the target is a gnark circuit.  And sub-builders are
+            // not used when the target is a gnark circuit, so it's fine to set the witness counts to 0.
             witness_var_count: 0,
             witness_felt_count: 0,
             witness_ext_count: 0,
             operations: Default::default(),
-            nb_public_values: None,
-            public_values_buffer: None,
-            debug: false,
-            po2_table: None,
+            nb_public_values,
+            debug,
+            is_sub_builder: true,
         }
     }
 
     /// Pushes an operation to the builder.
     pub fn push(&mut self, op: DslIr<C>) {
         self.operations.push(op);
+    }
+
+    /// Pushes an operation to the builder and records a trace if SP1_DEBUG.
+    pub fn trace_push(&mut self, op: DslIr<C>) {
+        self.operations.trace_push(op);
     }
 
     /// Creates an uninitialized variable.
@@ -208,7 +228,11 @@ impl<C: Config> Builder<C> {
     }
 
     /// Assert that two usizes are not equal.
-    pub fn assert_usize_ne(&mut self, lhs: SymbolicUsize<C::N>, rhs: SymbolicUsize<C::N>) {
+    pub fn assert_usize_ne(
+        &mut self,
+        lhs: impl Into<SymbolicUsize<C::N>>,
+        rhs: impl Into<SymbolicUsize<C::N>>,
+    ) {
         self.assert_ne::<Usize<C::N>>(lhs, rhs);
     }
 
@@ -365,6 +389,10 @@ impl<C: Config> Builder<C> {
     }
 
     pub fn witness_var(&mut self) -> Var<C::N> {
+        assert!(
+            !self.is_sub_builder,
+            "Cannot create a witness var with a sub builder"
+        );
         let witness = self.uninit();
         self.operations
             .push(DslIr::WitnessVar(witness, self.witness_var_count));
@@ -373,6 +401,10 @@ impl<C: Config> Builder<C> {
     }
 
     pub fn witness_felt(&mut self) -> Felt<C::F> {
+        assert!(
+            !self.is_sub_builder,
+            "Cannot create a witness felt with a sub builder"
+        );
         let witness = self.uninit();
         self.operations
             .push(DslIr::WitnessFelt(witness, self.witness_felt_count));
@@ -381,6 +413,10 @@ impl<C: Config> Builder<C> {
     }
 
     pub fn witness_ext(&mut self) -> Ext<C::F, C::EF> {
+        assert!(
+            !self.is_sub_builder,
+            "Cannot create a witness ext with a sub builder"
+        );
         let witness = self.uninit();
         self.operations
             .push(DslIr::WitnessExt(witness, self.witness_ext_count));
@@ -390,7 +426,7 @@ impl<C: Config> Builder<C> {
 
     /// Throws an error.
     pub fn error(&mut self) {
-        self.operations.push(DslIr::Error());
+        self.operations.trace_push(DslIr::Error());
     }
 
     /// Materializes a usize into a variable.
@@ -401,61 +437,54 @@ impl<C: Config> Builder<C> {
         }
     }
 
-    /// Store a felt in the public values buffer.
-    pub fn write_public_value(&mut self, val: Felt<C::F>) {
-        if self.nb_public_values.is_none() {
-            self.nb_public_values = Some(self.eval(C::N::zero()));
-            self.public_values_buffer = Some(self.dyn_array::<Felt<_>>(PV_BUFFER_MAX_SIZE));
-        }
-
-        let nb_public_values = self.nb_public_values.unwrap();
-        let mut public_values_buffer = self.public_values_buffer.clone().unwrap();
-
-        self.set(&mut public_values_buffer, nb_public_values, val);
-        self.assign(nb_public_values, nb_public_values + C::N::one());
-
-        self.nb_public_values = Some(nb_public_values);
-        self.public_values_buffer = Some(public_values_buffer);
+    /// Register a felt as public value.  This is append to the proof's public values buffer.
+    pub fn register_public_value(&mut self, val: Felt<C::F>) {
+        self.operations.push(DslIr::RegisterPublicValue(val));
     }
 
-    /// Stores an array of felts in the public values buffer.
-    pub fn write_public_values(&mut self, vals: &Array<C, Felt<C::F>>) {
+    /// Register and commits a felt as public value.  This value will be constrained when verified.
+    pub fn commit_public_value(&mut self, val: Felt<C::F>) {
+        assert!(
+            !self.is_sub_builder,
+            "Cannot commit to a public value with a sub builder"
+        );
         if self.nb_public_values.is_none() {
             self.nb_public_values = Some(self.eval(C::N::zero()));
-            self.public_values_buffer = Some(self.dyn_array::<Felt<_>>(PV_BUFFER_MAX_SIZE));
         }
+        let nb_public_values = *self.nb_public_values.as_ref().unwrap();
 
+        self.operations.push(DslIr::Commit(val, nb_public_values));
+        self.assign(nb_public_values, nb_public_values + C::N::one());
+    }
+
+    /// Commits an array of felts in public values.
+    pub fn commit_public_values(&mut self, vals: &Array<C, Felt<C::F>>) {
+        assert!(
+            !self.is_sub_builder,
+            "Cannot commit to public values with a sub builder"
+        );
         let len = vals.len();
-
-        let nb_public_values = self.nb_public_values.unwrap();
-        let mut public_values_buffer = self.public_values_buffer.clone().unwrap();
-
         self.range(0, len).for_each(|i, builder| {
             let val = builder.get(vals, i);
-            builder.set(&mut public_values_buffer, nb_public_values, val);
-            builder.assign(nb_public_values, nb_public_values + C::N::one());
+            builder.commit_public_value(val);
         });
-
-        self.nb_public_values = Some(nb_public_values);
-        self.public_values_buffer = Some(public_values_buffer);
     }
 
-    /// Hashes the public values buffer and calls the Commit command on the digest.
-    pub fn commit_public_values(&mut self) {
-        if self.nb_public_values.is_none() {
-            self.nb_public_values = Some(self.eval(C::N::zero()));
-            self.public_values_buffer = Some(self.dyn_array::<Felt<_>>(PV_BUFFER_MAX_SIZE));
-        }
+    pub fn commit_vkey_hash_circuit(&mut self, var: Var<C::N>) {
+        self.operations.push(DslIr::CircuitCommitVkeyHash(var));
+    }
 
-        let pv_buffer = self.public_values_buffer.clone().unwrap();
-        pv_buffer.truncate(self, self.nb_public_values.unwrap().into());
-
-        let pv_hash = self.poseidon2_hash(&pv_buffer);
-        self.operations.push(DslIr::Commit(pv_hash.clone()));
+    pub fn commit_commited_values_digest_circuit(&mut self, var: Var<C::N>) {
+        self.operations
+            .push(DslIr::CircuitCommitCommitedValuesDigest(var));
     }
 
     pub fn cycle_tracker(&mut self, name: &str) {
         self.operations.push(DslIr::CycleTracker(name.to_string()));
+    }
+
+    pub fn halt(&mut self) {
+        self.operations.push(DslIr::Halt);
     }
 }
 
@@ -482,11 +511,13 @@ impl<'a, C: Config> IfBuilder<'a, C> {
         // Get the condition reduced from the expressions for lhs and rhs.
         let condition = self.condition();
 
-        // Execute the `then`` block and collect the instructions.
-        let mut f_builder = Builder::<C>::new(
+        // Execute the `then` block and collect the instructions.
+        let mut f_builder = Builder::<C>::new_sub_builder(
             self.builder.var_count,
             self.builder.felt_count,
             self.builder.ext_count,
+            self.builder.nb_public_values,
+            self.builder.debug,
         );
         f(&mut f_builder);
         let then_instructions = f_builder.operations;
@@ -529,20 +560,24 @@ impl<'a, C: Config> IfBuilder<'a, C> {
     ) {
         // Get the condition reduced from the expressions for lhs and rhs.
         let condition = self.condition();
-        let mut then_builder = Builder::<C>::new(
+        let mut then_builder = Builder::<C>::new_sub_builder(
             self.builder.var_count,
             self.builder.felt_count,
             self.builder.ext_count,
+            self.builder.nb_public_values,
+            self.builder.debug,
         );
 
         // Execute the `then` and `else_then` blocks and collect the instructions.
         then_f(&mut then_builder);
         let then_instructions = then_builder.operations;
 
-        let mut else_builder = Builder::<C>::new(
+        let mut else_builder = Builder::<C>::new_sub_builder(
             self.builder.var_count,
             self.builder.felt_count,
             self.builder.ext_count,
+            self.builder.nb_public_values,
+            self.builder.debug,
         );
         else_f(&mut else_builder);
         let else_instructions = else_builder.operations;
@@ -584,53 +619,59 @@ impl<'a, C: Config> IfBuilder<'a, C> {
 
     fn condition(&mut self) -> IfCondition<C::N> {
         match (self.lhs.clone(), self.rhs.clone(), self.is_eq) {
-            (SymbolicVar::Const(lhs), SymbolicVar::Const(rhs), true) => {
+            (SymbolicVar::Const(lhs, _), SymbolicVar::Const(rhs, _), true) => {
                 IfCondition::EqConst(lhs, rhs)
             }
-            (SymbolicVar::Const(lhs), SymbolicVar::Const(rhs), false) => {
+            (SymbolicVar::Const(lhs, _), SymbolicVar::Const(rhs, _), false) => {
                 IfCondition::NeConst(lhs, rhs)
             }
-            (SymbolicVar::Const(lhs), SymbolicVar::Val(rhs), true) => IfCondition::EqI(rhs, lhs),
-            (SymbolicVar::Const(lhs), SymbolicVar::Val(rhs), false) => IfCondition::NeI(rhs, lhs),
-            (SymbolicVar::Const(lhs), rhs, true) => {
+            (SymbolicVar::Const(lhs, _), SymbolicVar::Val(rhs, _), true) => {
+                IfCondition::EqI(rhs, lhs)
+            }
+            (SymbolicVar::Const(lhs, _), SymbolicVar::Val(rhs, _), false) => {
+                IfCondition::NeI(rhs, lhs)
+            }
+            (SymbolicVar::Const(lhs, _), rhs, true) => {
                 let rhs: Var<C::N> = self.builder.eval(rhs);
                 IfCondition::EqI(rhs, lhs)
             }
-            (SymbolicVar::Const(lhs), rhs, false) => {
+            (SymbolicVar::Const(lhs, _), rhs, false) => {
                 let rhs: Var<C::N> = self.builder.eval(rhs);
                 IfCondition::NeI(rhs, lhs)
             }
-            (SymbolicVar::Val(lhs), SymbolicVar::Const(rhs), true) => {
+            (SymbolicVar::Val(lhs, _), SymbolicVar::Const(rhs, _), true) => {
                 let lhs: Var<C::N> = self.builder.eval(lhs);
                 IfCondition::EqI(lhs, rhs)
             }
-            (SymbolicVar::Val(lhs), SymbolicVar::Const(rhs), false) => {
+            (SymbolicVar::Val(lhs, _), SymbolicVar::Const(rhs, _), false) => {
                 let lhs: Var<C::N> = self.builder.eval(lhs);
                 IfCondition::NeI(lhs, rhs)
             }
-            (lhs, SymbolicVar::Const(rhs), true) => {
+            (lhs, SymbolicVar::Const(rhs, _), true) => {
                 let lhs: Var<C::N> = self.builder.eval(lhs);
                 IfCondition::EqI(lhs, rhs)
             }
-            (lhs, SymbolicVar::Const(rhs), false) => {
+            (lhs, SymbolicVar::Const(rhs, _), false) => {
                 let lhs: Var<C::N> = self.builder.eval(lhs);
                 IfCondition::NeI(lhs, rhs)
             }
-            (SymbolicVar::Val(lhs), SymbolicVar::Val(rhs), true) => IfCondition::Eq(lhs, rhs),
-            (SymbolicVar::Val(lhs), SymbolicVar::Val(rhs), false) => IfCondition::Ne(lhs, rhs),
-            (SymbolicVar::Val(lhs), rhs, true) => {
+            (SymbolicVar::Val(lhs, _), SymbolicVar::Val(rhs, _), true) => IfCondition::Eq(lhs, rhs),
+            (SymbolicVar::Val(lhs, _), SymbolicVar::Val(rhs, _), false) => {
+                IfCondition::Ne(lhs, rhs)
+            }
+            (SymbolicVar::Val(lhs, _), rhs, true) => {
                 let rhs: Var<C::N> = self.builder.eval(rhs);
                 IfCondition::Eq(lhs, rhs)
             }
-            (SymbolicVar::Val(lhs), rhs, false) => {
+            (SymbolicVar::Val(lhs, _), rhs, false) => {
                 let rhs: Var<C::N> = self.builder.eval(rhs);
                 IfCondition::Ne(lhs, rhs)
             }
-            (lhs, SymbolicVar::Val(rhs), true) => {
+            (lhs, SymbolicVar::Val(rhs, _), true) => {
                 let lhs: Var<C::N> = self.builder.eval(lhs);
                 IfCondition::Eq(lhs, rhs)
             }
-            (lhs, SymbolicVar::Val(rhs), false) => {
+            (lhs, SymbolicVar::Val(rhs, _), false) => {
                 let lhs: Var<C::N> = self.builder.eval(lhs);
                 IfCondition::Ne(lhs, rhs)
             }
@@ -657,7 +698,7 @@ pub struct RangeBuilder<'a, C: Config> {
 }
 
 impl<'a, C: Config> RangeBuilder<'a, C> {
-    pub fn step_by(mut self, step_size: usize) -> Self {
+    pub const fn step_by(mut self, step_size: usize) -> Self {
         self.step_size = step_size;
         self
     }
@@ -665,10 +706,12 @@ impl<'a, C: Config> RangeBuilder<'a, C> {
     pub fn for_each(self, mut f: impl FnMut(Var<C::N>, &mut Builder<C>)) {
         let step_size = C::N::from_canonical_usize(self.step_size);
         let loop_variable: Var<C::N> = self.builder.uninit();
-        let mut loop_body_builder = Builder::<C>::new(
+        let mut loop_body_builder = Builder::<C>::new_sub_builder(
             self.builder.var_count,
             self.builder.felt_count,
             self.builder.ext_count,
+            self.builder.nb_public_values,
+            self.builder.debug,
         );
 
         f(loop_variable, &mut loop_body_builder);

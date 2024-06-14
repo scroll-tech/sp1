@@ -4,6 +4,7 @@ use sp1_derive::AlignedBorrow;
 
 use crate::air::SP1AirBuilder;
 use crate::air::Word;
+use crate::bytes::event::ByteRecord;
 use crate::bytes::utils::shr_carry;
 use crate::bytes::ByteLookupEvent;
 use crate::bytes::ByteOpcode;
@@ -27,15 +28,15 @@ pub struct FixedRotateRightOperation<T> {
 }
 
 impl<F: Field> FixedRotateRightOperation<F> {
-    pub fn nb_bytes_to_shift(rotation: usize) -> usize {
+    pub const fn nb_bytes_to_shift(rotation: usize) -> usize {
         rotation / 8
     }
 
-    pub fn nb_bits_to_shift(rotation: usize) -> usize {
+    pub const fn nb_bits_to_shift(rotation: usize) -> usize {
         rotation % 8
     }
 
-    pub fn carry_multiplier(rotation: usize) -> u32 {
+    pub const fn carry_multiplier(rotation: usize) -> u32 {
         let nb_bits_to_shift = Self::nb_bits_to_shift(rotation);
         1 << (8 - nb_bits_to_shift)
     }
@@ -44,6 +45,7 @@ impl<F: Field> FixedRotateRightOperation<F> {
         &mut self,
         record: &mut ExecutionRecord,
         shard: u32,
+        channel: u32,
         input: u32,
         rotation: usize,
     ) -> u32 {
@@ -75,6 +77,7 @@ impl<F: Field> FixedRotateRightOperation<F> {
 
             let byte_event = ByteLookupEvent {
                 shard,
+                channel,
                 opcode: ByteOpcode::ShrCarry,
                 a1: shift as u32,
                 a2: carry as u32,
@@ -110,6 +113,7 @@ impl<F: Field> FixedRotateRightOperation<F> {
         rotation: usize,
         cols: FixedRotateRightOperation<AB::Var>,
         shard: AB::Var,
+        channel: impl Into<AB::Expr> + Clone,
         is_real: AB::Var,
     ) {
         // Compute some constants with respect to the rotation needed for the rotation.
@@ -137,6 +141,7 @@ impl<F: Field> FixedRotateRightOperation<F> {
                 input_bytes_rotated[i],
                 AB::F::from_canonical_usize(nb_bits_to_shift),
                 shard,
+                channel.clone(),
                 is_real,
             );
 

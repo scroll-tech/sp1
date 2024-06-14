@@ -43,7 +43,7 @@ pub struct ProgramMultiplicityCols<T> {
 pub struct ProgramChip;
 
 impl ProgramChip {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {}
     }
 }
@@ -165,12 +165,6 @@ where
         let prep_local: &ProgramPreprocessedCols<AB::Var> = (*prep_local).borrow();
         let mult_local = main.row_slice(0);
         let mult_local: &ProgramMultiplicityCols<AB::Var> = (*mult_local).borrow();
-
-        // Dummy constraint of degree 3.
-        builder.assert_eq(
-            prep_local.pc * prep_local.pc * prep_local.pc,
-            prep_local.pc * prep_local.pc * prep_local.pc,
-        );
 
         // Contrain the interaction with CPU table
         builder.receive_program(

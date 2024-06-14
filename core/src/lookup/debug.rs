@@ -7,7 +7,7 @@ use p3_matrix::Matrix;
 
 use super::InteractionKind;
 use crate::air::MachineAir;
-use crate::stark::{MachineChip, MachineStark, ProvingKey, StarkGenericConfig, Val};
+use crate::stark::{MachineChip, StarkGenericConfig, StarkMachine, StarkProvingKey, Val};
 
 #[derive(Debug)]
 pub struct InteractionData<F: Field> {
@@ -47,7 +47,7 @@ fn field_to_int<F: PrimeField32>(x: F) -> i32 {
 
 pub fn debug_interactions<SC: StarkGenericConfig, A: MachineAir<Val<SC>>>(
     chip: &MachineChip<SC, A>,
-    pkey: &ProvingKey<SC>,
+    pkey: &StarkProvingKey<SC>,
     record: &A::Record,
     interaction_kinds: Vec<InteractionKind>,
 ) -> (
@@ -126,8 +126,8 @@ pub fn debug_interactions<SC: StarkGenericConfig, A: MachineAir<Val<SC>>>(
 /// Calculate the number of times we send and receive each event of the given interaction type,
 /// and print out the ones for which the set of sends and receives don't match.
 pub fn debug_interactions_with_all_chips<SC, A>(
-    machine: &MachineStark<SC, A>,
-    pkey: &ProvingKey<SC>,
+    machine: &StarkMachine<SC, A>,
+    pkey: &StarkProvingKey<SC>,
     shards: &[A::Record],
     interaction_kinds: Vec<InteractionKind>,
 ) -> bool
@@ -210,7 +210,7 @@ mod test {
         lookup::InteractionKind,
         runtime::{Program, Runtime, ShardingConfig},
         stark::RiscvAir,
-        utils::{setup_logger, tests::UINT256_MUL, BabyBearPoseidon2},
+        utils::{setup_logger, tests::UINT256_MUL_ELF, BabyBearPoseidon2, SP1CoreOpts},
     };
 
     use super::debug_interactions_with_all_chips;
@@ -218,12 +218,12 @@ mod test {
     #[test]
     fn test_debug_interactions() {
         setup_logger();
-        let program = Program::from(UINT256_MUL);
+        let program = Program::from(UINT256_MUL_ELF);
         let config = BabyBearPoseidon2::new();
         let machine = RiscvAir::machine(config);
         let (pk, _) = machine.setup(&program);
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         let shards = machine.shard(runtime.record, &ShardingConfig::default());
         let ok =
             debug_interactions_with_all_chips(&machine, &pk, &shards, InteractionKind::all_kinds());

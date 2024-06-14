@@ -10,7 +10,7 @@ pub fn main() {
     let message = [Fr::from(1), Fr::from(2)];
 
     let mut results = Vec::new();
-    for i in 0..20 {
+    for _ in 0..20 {
         println!("cycle-tracker-start: hash with domain");
         results.push(Fr::hash_with_domain(message, Fr::zero()));
         println!("cycle-tracker-end: hash with domain");

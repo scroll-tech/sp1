@@ -15,18 +15,21 @@ use p3_matrix::Matrix;
 use serde::Deserialize;
 use serde::Serialize;
 use sp1_derive::AlignedBorrow;
-use typenum::Unsigned;
 use typenum::U32;
 
 use crate::air::BaseAirBuilder;
 use crate::air::MachineAir;
 use crate::air::SP1AirBuilder;
+use crate::bytes::event::ByteRecord;
+use crate::bytes::ByteLookupEvent;
 use crate::memory::MemoryReadCols;
 use crate::memory::MemoryWriteCols;
 use crate::operations::field::field_op::FieldOpCols;
 use crate::operations::field::field_op::FieldOperation;
 use crate::operations::field::field_sqrt::FieldSqrtCols;
+use crate::operations::field::params::FieldParameters;
 use crate::operations::field::params::Limbs;
+use crate::operations::field::range::FieldRangeCols;
 use crate::runtime::ExecutionRecord;
 use crate::runtime::MemoryReadRecord;
 use crate::runtime::MemoryWriteRecord;
@@ -39,28 +42,26 @@ use crate::utils::ec::edwards::ed25519::decompress;
 use crate::utils::ec::edwards::ed25519::ed25519_sqrt;
 use crate::utils::ec::edwards::ed25519::Ed25519BaseField;
 use crate::utils::ec::edwards::EdwardsParameters;
-use crate::utils::ec::field::FieldParameters;
-use crate::utils::ec::field::NumWords;
 use crate::utils::ec::COMPRESSED_POINT_BYTES;
 use crate::utils::ec::NUM_BYTES_FIELD_ELEMENT;
-use crate::utils::ec::NUM_WORDS_FIELD_ELEMENT;
 use crate::utils::limbs_from_access;
 use crate::utils::limbs_from_prev_access;
 use crate::utils::pad_rows;
 use crate::utils::words_to_bytes_le;
 
+use super::{WordsFieldElement, WORDS_FIELD_ELEMENT};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EdDecompressEvent {
     pub shard: u32,
+    pub channel: u32,
     pub clk: u32,
     pub ptr: u32,
     pub sign: bool,
     pub y_bytes: [u8; COMPRESSED_POINT_BYTES],
     pub decompressed_x_bytes: [u8; NUM_BYTES_FIELD_ELEMENT],
-    pub x_memory_records:
-        [MemoryWriteRecord; <<Ed25519BaseField as NumWords>::WordsFieldElement as Unsigned>::USIZE],
-    pub y_memory_records:
-        [MemoryReadRecord; <<Ed25519BaseField as NumWords>::WordsFieldElement as Unsigned>::USIZE],
+    pub x_memory_records: [MemoryWriteRecord; WORDS_FIELD_ELEMENT],
+    pub y_memory_records: [MemoryReadRecord; WORDS_FIELD_ELEMENT],
 }
 
 pub const NUM_ED_DECOMPRESS_COLS: usize = size_of::<EdDecompressCols<u8>>();
@@ -75,13 +76,13 @@ pub const NUM_ED_DECOMPRESS_COLS: usize = size_of::<EdDecompressCols<u8>>();
 pub struct EdDecompressCols<T> {
     pub is_real: T,
     pub shard: T,
+    pub channel: T,
     pub clk: T,
     pub ptr: T,
     pub sign: T,
-    pub x_access:
-        GenericArray<MemoryWriteCols<T>, <Ed25519BaseField as NumWords>::WordsFieldElement>,
-    pub y_access:
-        GenericArray<MemoryReadCols<T>, <Ed25519BaseField as NumWords>::WordsFieldElement>,
+    pub x_access: GenericArray<MemoryWriteCols<T>, WordsFieldElement>,
+    pub y_access: GenericArray<MemoryReadCols<T>, WordsFieldElement>,
+    pub(crate) y_range: FieldRangeCols<T, Ed25519BaseField>,
     pub(crate) yy: FieldOpCols<T, Ed25519BaseField>,
     pub(crate) u: FieldOpCols<T, Ed25519BaseField>,
     pub(crate) dyy: FieldOpCols<T, Ed25519BaseField>,
@@ -100,30 +101,69 @@ impl<F: PrimeField32> EdDecompressCols<F> {
         let mut new_byte_lookup_events = Vec::new();
         self.is_real = F::from_bool(true);
         self.shard = F::from_canonical_u32(event.shard);
+        self.channel = F::from_canonical_u32(event.channel);
         self.clk = F::from_canonical_u32(event.clk);
         self.ptr = F::from_canonical_u32(event.ptr);
         self.sign = F::from_bool(event.sign);
         for i in 0..8 {
-            self.x_access[i].populate(event.x_memory_records[i], &mut new_byte_lookup_events);
-            self.y_access[i].populate(event.y_memory_records[i], &mut new_byte_lookup_events);
+            self.x_access[i].populate(
+                event.channel,
+                event.x_memory_records[i],
+                &mut new_byte_lookup_events,
+            );
+            self.y_access[i].populate(
+                event.channel,
+                event.y_memory_records[i],
+                &mut new_byte_lookup_events,
+            );
         }
 
         let y = &BigUint::from_bytes_le(&event.y_bytes);
-        self.populate_field_ops::<E>(y);
+        self.populate_field_ops::<E>(&mut new_byte_lookup_events, event.shard, event.channel, y);
 
         record.add_byte_lookup_events(new_byte_lookup_events);
     }
 
-    fn populate_field_ops<E: EdwardsParameters>(&mut self, y: &BigUint) {
+    fn populate_field_ops<E: EdwardsParameters>(
+        &mut self,
+        blu_events: &mut Vec<ByteLookupEvent>,
+        shard: u32,
+        channel: u32,
+        y: &BigUint,
+    ) {
         let one = BigUint::one();
-        let yy = self.yy.populate(y, y, FieldOperation::Mul);
-        let u = self.u.populate(&yy, &one, FieldOperation::Sub);
-        let dyy = self.dyy.populate(&E::d_biguint(), &yy, FieldOperation::Mul);
-        let v = self.v.populate(&one, &dyy, FieldOperation::Add);
-        let u_div_v = self.u_div_v.populate(&u, &v, FieldOperation::Div);
-        let x = self.x.populate(&u_div_v, ed25519_sqrt);
-        self.neg_x
-            .populate(&BigUint::zero(), &x, FieldOperation::Sub);
+        self.y_range.populate(blu_events, shard, channel, y);
+        let yy = self
+            .yy
+            .populate(blu_events, shard, channel, y, y, FieldOperation::Mul);
+        let u = self
+            .u
+            .populate(blu_events, shard, channel, &yy, &one, FieldOperation::Sub);
+        let dyy = self.dyy.populate(
+            blu_events,
+            shard,
+            channel,
+            &E::d_biguint(),
+            &yy,
+            FieldOperation::Mul,
+        );
+        let v = self
+            .v
+            .populate(blu_events, shard, channel, &one, &dyy, FieldOperation::Add);
+        let u_div_v =
+            self.u_div_v
+                .populate(blu_events, shard, channel, &u, &v, FieldOperation::Div);
+        let x = self
+            .x
+            .populate(blu_events, shard, channel, &u_div_v, ed25519_sqrt);
+        self.neg_x.populate(
+            blu_events,
+            shard,
+            channel,
+            &BigUint::zero(),
+            &x,
+            FieldOperation::Sub,
+        );
     }
 }
 
@@ -137,52 +177,89 @@ impl<V: Copy> EdDecompressCols<V> {
         builder.assert_bool(self.sign);
 
         let y: Limbs<V, U32> = limbs_from_prev_access(&self.y_access);
-        self.yy
-            .eval::<AB, _, _>(builder, &y, &y, FieldOperation::Mul);
-        self.u.eval::<AB, _, _>(
+        self.y_range
+            .eval(builder, &y, self.shard, self.channel, self.is_real);
+        self.yy.eval(
+            builder,
+            &y,
+            &y,
+            FieldOperation::Mul,
+            self.shard,
+            self.channel,
+            self.is_real,
+        );
+        self.u.eval(
             builder,
             &self.yy.result,
             &[AB::Expr::one()].iter(),
             FieldOperation::Sub,
+            self.shard,
+            self.channel,
+            self.is_real,
         );
         let d_biguint = E::d_biguint();
         let d_const = E::BaseField::to_limbs_field::<AB::F, _>(&d_biguint);
-        self.dyy
-            .eval::<AB, _, _>(builder, &d_const, &self.yy.result, FieldOperation::Mul);
-        self.v.eval::<AB, _, _>(
+        self.dyy.eval(
+            builder,
+            &d_const,
+            &self.yy.result,
+            FieldOperation::Mul,
+            self.shard,
+            self.channel,
+            self.is_real,
+        );
+        self.v.eval(
             builder,
             &[AB::Expr::one()].iter(),
             &self.dyy.result,
             FieldOperation::Add,
+            self.shard,
+            self.channel,
+            self.is_real,
         );
-        self.u_div_v
-            .eval::<AB, _, _>(builder, &self.u.result, &self.v.result, FieldOperation::Div);
-        self.x.eval::<AB>(builder, &self.u_div_v.result);
-        self.neg_x.eval::<AB, _, _>(
+        self.u_div_v.eval(
+            builder,
+            &self.u.result,
+            &self.v.result,
+            FieldOperation::Div,
+            self.shard,
+            self.channel,
+            self.is_real,
+        );
+        self.x.eval(
+            builder,
+            &self.u_div_v.result,
+            AB::F::zero(),
+            self.shard,
+            self.channel,
+            self.is_real,
+        );
+        self.neg_x.eval(
             builder,
             &[AB::Expr::zero()].iter(),
             &self.x.multiplication.result,
             FieldOperation::Sub,
+            self.shard,
+            self.channel,
+            self.is_real,
         );
 
-        for i in 0..NUM_WORDS_FIELD_ELEMENT {
-            builder.eval_memory_access(
-                self.shard,
-                self.clk,
-                self.ptr.into() + AB::F::from_canonical_u32((i as u32) * 4),
-                &self.x_access[i],
-                self.is_real,
-            );
-        }
-        for i in 0..NUM_WORDS_FIELD_ELEMENT {
-            builder.eval_memory_access(
-                self.shard,
-                self.clk,
-                self.ptr.into() + AB::F::from_canonical_u32((i as u32) * 4 + 32),
-                &self.y_access[i],
-                self.is_real,
-            );
-        }
+        builder.eval_memory_access_slice(
+            self.shard,
+            self.channel,
+            self.clk,
+            self.ptr,
+            &self.x_access,
+            self.is_real,
+        );
+        builder.eval_memory_access_slice(
+            self.shard,
+            self.channel,
+            self.clk,
+            self.ptr.into() + AB::F::from_canonical_u32(32),
+            &self.y_access,
+            self.is_real,
+        );
 
         // Constrain that the correct result is written into x.
         let x_limbs: Limbs<V, U32> = limbs_from_access(&self.x_access);
@@ -197,6 +274,7 @@ impl<V: Copy> EdDecompressCols<V> {
 
         builder.receive_syscall(
             self.shard,
+            self.channel,
             self.clk,
             AB::F::from_canonical_u32(SyscallCode::ED_DECOMPRESS.syscall_id()),
             self.ptr,
@@ -220,7 +298,7 @@ impl<E: EdwardsParameters> Syscall for EdDecompressChip<E> {
 
         let (y_memory_records_vec, y_vec) = rt.mr_slice(
             slice_ptr + (COMPRESSED_POINT_BYTES as u32),
-            NUM_WORDS_FIELD_ELEMENT,
+            WORDS_FIELD_ELEMENT,
         );
         let y_memory_records: [MemoryReadRecord; 8] = y_memory_records_vec.try_into().unwrap();
 
@@ -241,7 +319,7 @@ impl<E: EdwardsParameters> Syscall for EdDecompressChip<E> {
 
         let mut decompressed_x_bytes = decompressed.x.to_bytes_le();
         decompressed_x_bytes.resize(32, 0u8);
-        let decompressed_x_words: [u32; NUM_WORDS_FIELD_ELEMENT] =
+        let decompressed_x_words: [u32; WORDS_FIELD_ELEMENT] =
             bytes_to_words_le(&decompressed_x_bytes);
 
         // Write decompressed X into slice
@@ -249,10 +327,12 @@ impl<E: EdwardsParameters> Syscall for EdDecompressChip<E> {
         let x_memory_records: [MemoryWriteRecord; 8] = x_memory_records_vec.try_into().unwrap();
 
         let shard = rt.current_shard();
+        let channel = rt.current_channel();
         rt.record_mut()
             .ed_decompress_events
             .push(EdDecompressEvent {
                 shard,
+                channel,
                 clk: start_clk,
                 ptr: slice_ptr,
                 sign: sign_bool,
@@ -270,7 +350,7 @@ impl<E: EdwardsParameters> Syscall for EdDecompressChip<E> {
 }
 
 impl<E: EdwardsParameters> EdDecompressChip<E> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             _phantom: PhantomData,
         }
@@ -306,7 +386,7 @@ impl<F: PrimeField32, E: EdwardsParameters> MachineAir<F> for EdDecompressChip<E
             let mut row = [F::zero(); NUM_ED_DECOMPRESS_COLS];
             let cols: &mut EdDecompressCols<F> = row.as_mut_slice().borrow_mut();
             let zero = BigUint::zero();
-            cols.populate_field_ops::<E>(&zero);
+            cols.populate_field_ops::<E>(&mut vec![], 0, 0, &zero);
             row
         });
 

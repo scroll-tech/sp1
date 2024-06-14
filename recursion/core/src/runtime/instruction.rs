@@ -1,10 +1,11 @@
 use p3_field::PrimeField32;
+use serde::{Deserialize, Serialize};
 
 use crate::air::Block;
 
 use super::{Opcode, D};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Instruction<F> {
     /// Which operation to execute.
     pub opcode: Opcode,
@@ -60,45 +61,17 @@ impl<F: PrimeField32> Instruction<F> {
         }
     }
 
-    pub(crate) fn is_b_ext(&self) -> bool {
-        matches!(
-            self.opcode,
-            Opcode::LE
-                | Opcode::SE
-                | Opcode::EADD
-                | Opcode::ESUB
-                | Opcode::EMUL
-                | Opcode::EFADD
-                | Opcode::EFSUB
-                | Opcode::EFMUL
-                | Opcode::EDIV
-                | Opcode::EFDIV
-                | Opcode::EBNE
-                | Opcode::EBEQ
+    pub fn dummy() -> Self {
+        Instruction::new(
+            Opcode::ADD,
+            F::zero(),
+            [F::zero(); 4],
+            [F::zero(); 4],
+            F::zero(),
+            F::zero(),
+            false,
+            false,
+            "".to_string(),
         )
-    }
-
-    pub(crate) fn is_c_ext(&self) -> bool {
-        matches!(
-            self.opcode,
-            Opcode::LE
-                | Opcode::SE
-                | Opcode::EADD
-                | Opcode::EMUL
-                | Opcode::ESUB
-                | Opcode::FESUB
-                | Opcode::EDIV
-                | Opcode::FEDIV
-                | Opcode::EBNE
-                | Opcode::EBEQ
-        )
-    }
-
-    pub(crate) fn imm_b_base(&self) -> bool {
-        self.imm_b && !self.is_b_ext()
-    }
-
-    pub(crate) fn imm_c_base(&self) -> bool {
-        self.imm_c && !self.is_c_ext()
     }
 }

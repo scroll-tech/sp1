@@ -1,0 +1,24 @@
+[package]
+name = "sp1-recursion-gnark-ffi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+p3-field = { workspace = true }
+p3-baby-bear = { workspace = true }
+sp1-recursion-compiler = { path = "../compiler" }
+serde = "1.0.201"
+serde_json = "1.0.117"
+tempfile = "3.10.1"
+rand = "0.8"
+log = "0.4.21"
+num-bigint = "0.4.5"
+cfg-if = "1.0"
+
+[build-dependencies]
+bindgen = "0.69.4"
+cc = "1.0"
+cfg-if = "1.0"
+
+[features]
+plonk = []

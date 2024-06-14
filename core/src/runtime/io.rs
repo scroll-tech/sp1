@@ -1,7 +1,7 @@
 use std::io::Read;
 
-use crate::stark::{Proof, VerifyingKey};
-use crate::utils::BabyBearPoseidon2Inner;
+use crate::stark::{ShardProof, StarkVerifyingKey};
+use crate::utils::BabyBearPoseidon2;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -34,8 +34,8 @@ impl Runtime {
 
     pub fn write_proof(
         &mut self,
-        proof: Proof<BabyBearPoseidon2Inner>,
-        vk: VerifyingKey<BabyBearPoseidon2Inner>,
+        proof: ShardProof<BabyBearPoseidon2>,
+        vk: StarkVerifyingKey<BabyBearPoseidon2>,
     ) {
         self.state.proof_stream.push((proof, vk));
     }
@@ -60,7 +60,7 @@ pub mod tests {
     use super::*;
     use crate::runtime::Program;
     use crate::utils::tests::IO_ELF;
-    use crate::utils::{self, prove_core, BabyBearBlake3};
+    use crate::utils::{self, prove_simple, BabyBearBlake3, SP1CoreOpts};
     use serde::Deserialize;
 
     #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -89,11 +89,11 @@ pub mod tests {
     fn test_io_run() {
         utils::setup_logger();
         let program = Program::from(IO_ELF);
-        let mut runtime = Runtime::new(program);
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
         let points = points();
         runtime.write_stdin(&points.0);
         runtime.write_stdin(&points.1);
-        runtime.run();
+        runtime.run().unwrap();
         let added_point = runtime.read_public_values::<MyPointUnaligned>();
         assert_eq!(
             added_point,
@@ -109,12 +109,12 @@ pub mod tests {
     fn test_io_prove() {
         utils::setup_logger();
         let program = Program::from(IO_ELF);
-        let mut runtime = Runtime::new(program);
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
         let points = points();
         runtime.write_stdin(&points.0);
         runtime.write_stdin(&points.1);
-        runtime.run();
+        runtime.run().unwrap();
         let config = BabyBearBlake3::new();
-        prove_core(config, runtime);
+        prove_simple(config, runtime).unwrap();
     }
 }

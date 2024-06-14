@@ -5,6 +5,7 @@ use sp1_derive::AlignedBorrow;
 
 use crate::air::SP1AirBuilder;
 use crate::air::Word;
+use crate::bytes::event::ByteRecord;
 use crate::bytes::ByteOpcode;
 use crate::disassembler::WORD_SIZE;
 use crate::runtime::ExecutionRecord;
@@ -18,13 +19,19 @@ pub struct NotOperation<T> {
 }
 
 impl<F: Field> NotOperation<F> {
-    pub fn populate(&mut self, record: &mut ExecutionRecord, shard: u32, x: u32) -> u32 {
+    pub fn populate(
+        &mut self,
+        record: &mut ExecutionRecord,
+        shard: u32,
+        channel: u32,
+        x: u32,
+    ) -> u32 {
         let expected = !x;
         let x_bytes = x.to_le_bytes();
         for i in 0..WORD_SIZE {
             self.value[i] = F::from_canonical_u8(!x_bytes[i]);
         }
-        record.add_u8_range_checks(shard, &x_bytes);
+        record.add_u8_range_checks(shard, channel, &x_bytes);
         expected
     }
 
@@ -33,8 +40,9 @@ impl<F: Field> NotOperation<F> {
         builder: &mut AB,
         a: Word<AB::Var>,
         cols: NotOperation<AB::Var>,
-        shard: AB::Var,
-        is_real: AB::Var,
+        shard: impl Into<AB::Expr> + Copy,
+        channel: impl Into<AB::Expr> + Copy,
+        is_real: impl Into<AB::Expr> + Copy,
     ) {
         for i in (0..WORD_SIZE).step_by(2) {
             builder.send_byte_pair(
@@ -44,6 +52,7 @@ impl<F: Field> NotOperation<F> {
                 a[i],
                 a[i + 1],
                 shard,
+                channel,
                 is_real,
             );
         }
@@ -54,8 +63,5 @@ impl<F: Field> NotOperation<F> {
                 .when(is_real)
                 .assert_eq(cols.value[i] + a[i], AB::F::from_canonical_u8(u8::MAX));
         }
-
-        // A dummy constraint to keep the degree 3.
-        builder.assert_zero(a[0] * a[0] * a[0] - a[0] * a[0] * a[0]);
     }
 }

@@ -22,19 +22,20 @@ pub use utils::*;
 
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
-use std::rc::Rc;
 use std::sync::Arc;
 
+use thiserror::Error;
+
+use crate::bytes::NUM_BYTE_LOOKUP_CHANNELS;
 use crate::memory::MemoryInitializeFinalizeEvent;
-use crate::utils::env;
+use crate::utils::SP1CoreOpts;
 use crate::{alu::AluEvent, cpu::CpuEvent};
 
-pub const MAX_SHARD_CLK: usize = (1 << 24) - 1;
-
-/// An implementation of a runtime for the SP1 VM.
+/// An implementation of a runtime for the SP1 RISC-V zkVM.
 ///
 /// The runtime is responsible for executing a user program and tracing important events which occur
 /// during execution (i.e., memory reads, alu operations, etc).
@@ -68,26 +69,86 @@ pub struct Runtime {
     /// A buffer for writing trace events to a file.
     pub trace_buf: Option<BufWriter<File>>,
 
-    /// Whether the runtime should fail on panic or not.
-    pub fail_on_panic: bool,
-
     /// Whether the runtime is in constrained mode or not.
+    ///
     /// In unconstrained mode, any events, clock, register, or memory changes are reset after leaving
     /// the unconstrained block. The only thing preserved is writes to the input stream.
     pub unconstrained: bool,
 
     pub(crate) unconstrained_state: ForkState,
 
-    pub syscall_map: HashMap<SyscallCode, Rc<dyn Syscall>>,
+    pub syscall_map: HashMap<SyscallCode, Arc<dyn Syscall>>,
 
     pub max_syscall_cycles: u32,
 
     pub emit_events: bool,
+
+    /// Report of the program execution.
+    pub report: ExecutionReport,
+
+    /// Whether we should write to the report.
+    pub should_report: bool,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+pub struct ExecutionReport {
+    pub instruction_counts: HashMap<Opcode, u64>,
+    pub syscall_counts: HashMap<SyscallCode, u64>,
+}
+
+impl ExecutionReport {
+    pub fn total_instruction_count(&self) -> u64 {
+        self.instruction_counts.values().sum()
+    }
+
+    pub fn total_syscall_count(&self) -> u64 {
+        self.syscall_counts.values().sum()
+    }
+}
+
+impl Display for ExecutionReport {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        writeln!(f, "Instruction Counts:")?;
+        let mut sorted_instructions = self.instruction_counts.iter().collect::<Vec<_>>();
+
+        // Sort instructions by opcode name
+        sorted_instructions.sort_by_key(|&(opcode, _)| opcode.to_string());
+        for (opcode, count) in sorted_instructions {
+            writeln!(f, "  {}: {}", opcode, count)?;
+        }
+        writeln!(f, "Total Instructions: {}", self.total_instruction_count())?;
+
+        writeln!(f, "Syscall Counts:")?;
+        let mut sorted_syscalls = self.syscall_counts.iter().collect::<Vec<_>>();
+
+        // Sort syscalls by syscall name
+        sorted_syscalls.sort_by_key(|&(syscall, _)| format!("{:?}", syscall));
+        for (syscall, count) in sorted_syscalls {
+            writeln!(f, "  {}: {}", syscall, count)?;
+        }
+        writeln!(f, "Total Syscall Count: {}", self.total_syscall_count())?;
+
+        Ok(())
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum ExecutionError {
+    #[error("execution failed with exit code {0}")]
+    HaltWithNonZeroExitCode(u32),
+    #[error("invalid memory access for opcode {0} and address {1}")]
+    InvalidMemoryAccess(Opcode, u32),
+    #[error("unimplemented syscall {0}")]
+    UnsupportedSyscall(u32),
+    #[error("breakpoint encountered")]
+    Breakpoint(),
+    #[error("got unimplemented as opcode")]
+    Unimplemented(),
 }
 
 impl Runtime {
     // Create a new runtime from a program.
-    pub fn new(program: Program) -> Self {
+    pub fn new(program: Program, opts: SP1CoreOpts) -> Self {
         // Create a shared reference to the program.
         let program = Arc::new(program);
 
@@ -105,43 +166,42 @@ impl Runtime {
             None
         };
 
-        let syscall_map = default_syscall_map();
         // Determine the maximum number of cycles for any syscall.
+        let syscall_map = default_syscall_map();
         let max_syscall_cycles = syscall_map
             .values()
             .map(|syscall| syscall.num_extra_cycles())
             .max()
             .unwrap_or(0);
 
-        let shard_size = env::shard_size() as u32;
-
         Self {
             record,
             state: ExecutionState::new(program.pc_start),
             program,
             memory_accesses: MemoryAccessRecord::default(),
-            shard_size: shard_size * 4,
-            shard_batch_size: env::shard_batch_size() as u32 * shard_size,
+            shard_size: (opts.shard_size as u32) * 4,
+            shard_batch_size: opts.shard_batch_size as u32,
             cycle_tracker: HashMap::new(),
             io_buf: HashMap::new(),
             trace_buf,
-            fail_on_panic: true,
             unconstrained: false,
             unconstrained_state: ForkState::default(),
             syscall_map,
             emit_events: true,
             max_syscall_cycles,
+            report: Default::default(),
+            should_report: false,
         }
     }
 
     /// Recover runtime state from a program and existing execution state.
-    pub fn recover(program: Program, state: ExecutionState) -> Self {
-        let mut runtime = Self::new(program);
+    pub fn recover(program: Program, state: ExecutionState, opts: SP1CoreOpts) -> Self {
+        let mut runtime = Self::new(program, opts);
         runtime.state = state;
         let index: u32 = (runtime.state.global_clk / (runtime.shard_size / 4) as u64)
             .try_into()
             .unwrap();
-        runtime.record.index = index;
+        runtime.record.index = index + 1;
         runtime
     }
 
@@ -182,13 +242,19 @@ impl Runtime {
     }
 
     /// Get the current timestamp for a given memory access position.
-    pub fn timestamp(&self, position: &MemoryAccessPosition) -> u32 {
+    pub const fn timestamp(&self, position: &MemoryAccessPosition) -> u32 {
         self.state.clk + *position as u32
     }
 
     /// Get the current shard.
+    #[inline]
     pub fn shard(&self) -> u32 {
         self.state.current_shard
+    }
+
+    #[inline]
+    pub fn channel(&self) -> u32 {
+        self.state.channel
     }
 
     /// Read a word from memory and create an access record.
@@ -215,6 +281,7 @@ impl Runtime {
             Entry::Vacant(entry) => {
                 // If addr has a specific value to be initialized with, use that, otherwise 0.
                 let value = self.state.uninitialized_memory.remove(&addr).unwrap_or(0);
+
                 // Do not emit memory initialize events for address 0 as that is done in initialize.
                 if addr != 0 {
                     self.record
@@ -262,6 +329,7 @@ impl Runtime {
             Entry::Vacant(entry) => {
                 // If addr has a specific value to be initialized with, use that, otherwise 0.
                 let value = self.state.uninitialized_memory.remove(&addr).unwrap_or(0);
+
                 // Do not emit memory initialize events for address 0 as that is done in initialize.
                 if addr != 0 {
                     self.record
@@ -366,6 +434,7 @@ impl Runtime {
     fn emit_cpu(
         &mut self,
         shard: u32,
+        channel: u32,
         clk: u32,
         pc: u32,
         next_pc: u32,
@@ -379,6 +448,7 @@ impl Runtime {
     ) {
         let cpu_event = CpuEvent {
             shard,
+            channel,
             clk,
             pc,
             next_pc,
@@ -402,6 +472,7 @@ impl Runtime {
         let event = AluEvent {
             shard: self.shard(),
             clk,
+            channel: self.channel(),
             opcode,
             a,
             b,
@@ -502,7 +573,7 @@ impl Runtime {
     }
 
     /// Execute the given instruction over the current state of the runtime.
-    fn execute_instruction(&mut self, instruction: Instruction) {
+    fn execute_instruction(&mut self, instruction: Instruction) -> Result<(), ExecutionError> {
         let mut pc = self.state.pc;
         let mut clk = self.state.clk;
         let mut exit_code = 0u32;
@@ -514,6 +585,14 @@ impl Runtime {
         let (addr, memory_read_value): (u32, u32);
         let mut memory_store_value: Option<u32> = None;
         self.memory_accesses = MemoryAccessRecord::default();
+
+        if self.should_report && !self.unconstrained {
+            self.report
+                .instruction_counts
+                .entry(instruction.opcode)
+                .and_modify(|c| *c += 1)
+                .or_insert(1);
+        }
 
         match instruction.opcode {
             // Arithmetic instructions.
@@ -582,7 +661,9 @@ impl Runtime {
             }
             Opcode::LH => {
                 (rd, b, c, addr, memory_read_value) = self.load_rr(instruction);
-                assert_eq!(addr % 2, 0, "addr is not aligned");
+                if addr % 2 != 0 {
+                    return Err(ExecutionError::InvalidMemoryAccess(Opcode::LH, addr));
+                }
                 let value = match (addr >> 1) % 2 {
                     0 => memory_read_value & 0x0000FFFF,
                     1 => (memory_read_value & 0xFFFF0000) >> 16,
@@ -598,7 +679,9 @@ impl Runtime {
             }
             Opcode::LW => {
                 (rd, b, c, addr, memory_read_value) = self.load_rr(instruction);
-                assert_eq!(addr % 4, 0, "addr is not aligned");
+                if addr % 4 != 0 {
+                    return Err(ExecutionError::InvalidMemoryAccess(Opcode::LW, addr));
+                }
                 a = memory_read_value;
                 memory_store_value = Some(memory_read_value);
                 println!(
@@ -616,7 +699,9 @@ impl Runtime {
             }
             Opcode::LHU => {
                 (rd, b, c, addr, memory_read_value) = self.load_rr(instruction);
-                assert_eq!(addr % 2, 0, "addr is not aligned");
+                if addr % 2 != 0 {
+                    return Err(ExecutionError::InvalidMemoryAccess(Opcode::LHU, addr));
+                }
                 let value = match (addr >> 1) % 2 {
                     0 => memory_read_value & 0x0000FFFF,
                     1 => (memory_read_value & 0xFFFF0000) >> 16,
@@ -646,7 +731,9 @@ impl Runtime {
             }
             Opcode::SH => {
                 (a, b, c, addr, memory_read_value) = self.store_rr(instruction);
-                assert_eq!(addr % 2, 0, "addr is not aligned");
+                if addr % 2 != 0 {
+                    return Err(ExecutionError::InvalidMemoryAccess(Opcode::SH, addr));
+                }
                 let value = match (addr >> 1) % 2 {
                     0 => (a & 0x0000FFFF) + (memory_read_value & 0xFFFF0000),
                     1 => ((a & 0x0000FFFF) << 16) + (memory_read_value & 0x0000FFFF),
@@ -661,7 +748,9 @@ impl Runtime {
             }
             Opcode::SW => {
                 (a, b, c, addr, _) = self.store_rr(instruction);
-                assert_eq!(addr % 4, 0, "addr is not aligned");
+                if addr % 4 != 0 {
+                    return Err(ExecutionError::InvalidMemoryAccess(Opcode::SW, addr));
+                }
                 let value = a;
                 memory_store_value = Some(value);
                 println!(
@@ -735,22 +824,33 @@ impl Runtime {
 
             // System instructions.
             Opcode::ECALL => {
+                // We peek at register x5 to get the syscall id. The reason we don't `self.rr` this
+                // register is that we write to it later.
                 let t0 = Register::X5;
-                // We peek at register x5 to get the syscall id. The reason we don't `self.rr` this register
-                // is that we write to it later.
                 let syscall_id = self.register(t0);
                 c = self.rr(Register::X11, MemoryAccessPosition::C);
                 b = self.rr(Register::X10, MemoryAccessPosition::B);
                 let syscall = SyscallCode::from_u32(syscall_id);
 
-                let global_clk = self.state.global_clk;
+                if self.should_report && !self.unconstrained {
+                    self.report
+                        .syscall_counts
+                        .entry(syscall)
+                        .and_modify(|c| *c += 1)
+                        .or_insert(1);
+                }
 
+                let global_clk = self.state.global_clk;
                 let syscall_impl = self.get_syscall(syscall).cloned();
                 let mut precompile_rt = SyscallContext::new(self);
 
-                println!(
+                log::debug!(
                     "[clk: {}, pc: 0x{:x}] ecall syscall_id=0x{:x}, b: 0x{:x}, c: 0x{:x}",
-                    global_clk, pc, syscall_id, b, c,
+                    global_clk,
+                    pc,
+                    syscall_id,
+                    b,
+                    c,
                 );
                 let (precompile_next_pc, precompile_cycles, returned_exit_code) =
                     if let Some(syscall_impl) = syscall_impl {
@@ -760,16 +860,23 @@ impl Runtime {
                         if let Some(val) = res {
                             a = val;
                         } else {
-                            // Default to syscall_id if no value is returned from syscall execution.
                             a = syscall_id;
                         }
+
+                        // If the syscall is `HALT` and the exit code is non-zero, return an error.
+                        if syscall == SyscallCode::HALT && precompile_rt.exit_code != 0 {
+                            return Err(ExecutionError::HaltWithNonZeroExitCode(
+                                precompile_rt.exit_code,
+                            ));
+                        }
+
                         (
                             precompile_rt.next_pc,
                             syscall_impl.num_extra_cycles(),
                             precompile_rt.exit_code,
                         )
                     } else {
-                        panic!("Unsupported syscall: {:?}", syscall);
+                        return Err(ExecutionError::UnsupportedSyscall(syscall_id));
                     };
 
                 // Allow the syscall impl to modify state.clk/pc (exit unconstrained does this)
@@ -781,9 +888,8 @@ impl Runtime {
                 self.state.clk += precompile_cycles;
                 exit_code = returned_exit_code;
             }
-
             Opcode::EBREAK => {
-                todo!()
+                return Err(ExecutionError::Breakpoint());
             }
 
             // Multiply instructions.
@@ -844,21 +950,30 @@ impl Runtime {
                 self.alu_rw(instruction, rd, a, b, c);
             }
 
+            // See https://github.com/riscv-non-isa/riscv-asm-manual/blob/master/riscv-asm.md#instruction-aliases
             Opcode::UNIMP => {
-                // See https://github.com/riscv-non-isa/riscv-asm-manual/blob/master/riscv-asm.md#instruction-aliases
-                panic!("UNIMP encountered, we should never get here.");
+                return Err(ExecutionError::Unimplemented());
             }
         }
 
         // Update the program counter.
         self.state.pc = next_pc;
+
         // Update the clk to the next cycle.
         self.state.clk += 4;
+
+        let channel = self.channel();
+
+        // Update the channel to the next cycle.
+        if !self.unconstrained {
+            self.state.channel = (self.state.channel + 1) % NUM_BYTE_LOOKUP_CHANNELS;
+        }
 
         // Emit the CPU event for this cycle.
         if self.emit_events {
             self.emit_cpu(
                 self.shard(),
+                channel,
                 clk,
                 pc,
                 next_pc,
@@ -870,12 +985,13 @@ impl Runtime {
                 self.memory_accesses,
                 exit_code,
             );
-        }
+        };
+        Ok(())
     }
 
     /// Executes one cycle of the program, returning whether the program has finished.
     #[inline]
-    fn execute_cycle(&mut self) -> bool {
+    fn execute_cycle(&mut self) -> Result<bool, ExecutionError> {
         // Fetch the instruction at the current program counter.
         let instruction = self.fetch();
 
@@ -883,7 +999,7 @@ impl Runtime {
         self.log(&instruction);
 
         // Execute the instruction.
-        self.execute_instruction(instruction);
+        self.execute_instruction(instruction)?;
 
         // Increment the clock.
         self.state.global_clk += 1;
@@ -893,29 +1009,31 @@ impl Runtime {
         if !self.unconstrained && self.max_syscall_cycles + self.state.clk >= self.shard_size {
             self.state.current_shard += 1;
             self.state.clk = 0;
+            self.state.channel = 0;
         }
 
-        self.state.pc.wrapping_sub(self.program.pc_base)
-            >= (self.program.instructions.len() * 4) as u32
+        Ok(self.state.pc.wrapping_sub(self.program.pc_base)
+            >= (self.program.instructions.len() * 4) as u32)
     }
 
     /// Execute up to `self.shard_batch_size` cycles, returning the events emitted and whether the program ended.
-    pub fn execute_record(&mut self) -> (ExecutionRecord, bool) {
+    pub fn execute_record(&mut self) -> Result<(ExecutionRecord, bool), ExecutionError> {
         self.emit_events = true;
-        let done = self.execute();
-        (std::mem::take(&mut self.record), done)
+        let done = self.execute()?;
+        Ok((std::mem::take(&mut self.record), done))
     }
 
     /// Execute up to `self.shard_batch_size` cycles, returning a copy of the prestate and whether the program ended.
-    pub fn execute_state(&mut self) -> (ExecutionState, bool) {
+    pub fn execute_state(&mut self) -> Result<(ExecutionState, bool), ExecutionError> {
         self.emit_events = false;
         let state = self.state.clone();
-        let done = self.execute();
-        (state, done)
+        let done = self.execute()?;
+        Ok((state, done))
     }
 
     fn initialize(&mut self) {
         self.state.clk = 0;
+        self.state.channel = 0;
 
         tracing::info!("loading memory image");
         for (addr, value) in self.program.memory_image.iter() {
@@ -937,27 +1055,48 @@ impl Runtime {
         tracing::info!("starting execution");
     }
 
-    pub fn run(&mut self) {
+    pub fn run_untraced(&mut self) -> Result<(), ExecutionError> {
+        self.emit_events = false;
+        self.should_report = true;
+        while !self.execute()? {}
+        Ok(())
+    }
+
+    pub fn run(&mut self) -> Result<(), ExecutionError> {
         self.emit_events = true;
-        while !self.execute() {}
+        self.should_report = true;
+        while !self.execute()? {}
+        Ok(())
+    }
+
+    pub fn dry_run(&mut self) {
+        self.emit_events = false;
+        while !self.execute().unwrap() {}
     }
 
     /// Executes up to `self.shard_batch_size` cycles of the program, returning whether the program has finished.
-    fn execute(&mut self) -> bool {
+    fn execute(&mut self) -> Result<bool, ExecutionError> {
+        // If it's the first cycle, initialize the program.
         if self.state.global_clk == 0 {
             self.initialize();
         }
 
-        let mut cycles = 0_u64;
+        // Loop until we've executed `self.shard_batch_size` shards if `self.shard_batch_size` is set.
         let mut done = false;
-        // Loop until we've executed the maximum number of cycles or the program has finished.
-        while self.shard_batch_size == 0 || cycles < self.shard_batch_size as u64 {
-            if self.execute_cycle() {
+        let mut current_shard = self.state.current_shard;
+        let mut num_shards_executed = 0;
+        loop {
+            if self.execute_cycle()? {
                 done = true;
                 break;
             }
-            if !self.unconstrained {
-                cycles += 1;
+
+            if self.shard_batch_size > 0 && current_shard != self.state.current_shard {
+                num_shards_executed += 1;
+                current_shard = self.state.current_shard;
+                if num_shards_executed == self.shard_batch_size {
+                    break;
+                }
             }
         }
 
@@ -965,7 +1104,7 @@ impl Runtime {
             self.postprocess();
         }
 
-        done
+        Ok(done)
     }
 
     fn postprocess(&mut self) {
@@ -1027,7 +1166,7 @@ impl Runtime {
         }
     }
 
-    fn get_syscall(&mut self, code: SyscallCode) -> Option<&Rc<dyn Syscall>> {
+    fn get_syscall(&mut self, code: SyscallCode) -> Option<&Arc<dyn Syscall>> {
         self.syscall_map.get(&code)
     }
 }
@@ -1037,7 +1176,10 @@ pub mod tests {
 
     use crate::{
         runtime::Register,
-        utils::tests::{FIBONACCI_ELF, SSZ_WITHDRAWALS_ELF},
+        utils::{
+            tests::{FIBONACCI_ELF, PANIC_ELF, SSZ_WITHDRAWALS_ELF},
+            SP1CoreOpts,
+        },
     };
 
     use super::{Instruction, Opcode, Program, Runtime};
@@ -1059,12 +1201,76 @@ pub mod tests {
         Program::from(SSZ_WITHDRAWALS_ELF)
     }
 
+    pub fn panic_program() -> Program {
+        Program::from(PANIC_ELF)
+    }
+
     #[test]
     fn test_simple_program_run() {
         let program = simple_program();
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 42);
+    }
+
+    #[test]
+    fn test_ssz_withdrawals_program_run_report() {
+        let program = ssz_withdrawals_program();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
+        assert_eq!(runtime.report, {
+            use super::Opcode::*;
+            use super::SyscallCode::*;
+            super::ExecutionReport {
+                instruction_counts: [
+                    (LB, 10723),
+                    (DIVU, 6),
+                    (LW, 237094),
+                    (JALR, 38749),
+                    (XOR, 242242),
+                    (BEQ, 26917),
+                    (AND, 151701),
+                    (SB, 58448),
+                    (MUL, 4036),
+                    (SLTU, 16766),
+                    (ADD, 583439),
+                    (JAL, 5372),
+                    (LBU, 57950),
+                    (SRL, 293010),
+                    (SW, 312781),
+                    (ECALL, 2264),
+                    (BLTU, 43457),
+                    (BGEU, 5917),
+                    (BLT, 1141),
+                    (SUB, 12382),
+                    (BGE, 237),
+                    (MULHU, 1152),
+                    (BNE, 51442),
+                    (AUIPC, 19488),
+                    (OR, 301944),
+                    (SLL, 278698),
+                ]
+                .into(),
+                syscall_counts: [
+                    (COMMIT_DEFERRED_PROOFS, 8),
+                    (SHA_EXTEND, 1091),
+                    (COMMIT, 8),
+                    (WRITE, 65),
+                    (SHA_COMPRESS, 1091),
+                    (HALT, 1),
+                ]
+                .into(),
+            }
+        });
+        assert_eq!(runtime.report.total_instruction_count(), 2757356);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_panic() {
+        let program = panic_program();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
     }
 
     #[test]
@@ -1079,8 +1285,8 @@ pub mod tests {
             Instruction::new(Opcode::ADD, 31, 30, 29, false, false),
         ];
         let program = Program::new(instructions, 0, 0);
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 42);
     }
 
@@ -1096,8 +1302,8 @@ pub mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
 
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 32);
     }
 
@@ -1113,8 +1319,8 @@ pub mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
 
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 32);
     }
 
@@ -1130,9 +1336,9 @@ pub mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
 
-        let mut runtime = Runtime::new(program);
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
 
-        runtime.run();
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 37);
     }
 
@@ -1148,8 +1354,8 @@ pub mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
 
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 5);
     }
 
@@ -1165,8 +1371,8 @@ pub mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
 
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 1184);
     }
 
@@ -1182,8 +1388,8 @@ pub mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
 
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 1);
     }
 
@@ -1199,8 +1405,8 @@ pub mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
 
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 1);
     }
 
@@ -1216,8 +1422,8 @@ pub mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
 
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 0);
     }
 
@@ -1233,8 +1439,8 @@ pub mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
 
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 0);
     }
 
@@ -1250,8 +1456,8 @@ pub mod tests {
         ];
         let program = Program::new(instructions, 0, 0);
 
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 84);
     }
 
@@ -1266,8 +1472,8 @@ pub mod tests {
             Instruction::new(Opcode::ADD, 31, 30, 4, false, true),
         ];
         let program = Program::new(instructions, 0, 0);
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 5 - 1 + 4);
     }
 
@@ -1282,8 +1488,8 @@ pub mod tests {
             Instruction::new(Opcode::XOR, 31, 30, 42, false, true),
         ];
         let program = Program::new(instructions, 0, 0);
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 10);
     }
 
@@ -1298,8 +1504,8 @@ pub mod tests {
             Instruction::new(Opcode::OR, 31, 30, 42, false, true),
         ];
         let program = Program::new(instructions, 0, 0);
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 47);
     }
 
@@ -1314,8 +1520,8 @@ pub mod tests {
             Instruction::new(Opcode::AND, 31, 30, 42, false, true),
         ];
         let program = Program::new(instructions, 0, 0);
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 0);
     }
 
@@ -1328,8 +1534,8 @@ pub mod tests {
             Instruction::new(Opcode::SLL, 31, 29, 4, false, true),
         ];
         let program = Program::new(instructions, 0, 0);
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 80);
     }
 
@@ -1342,8 +1548,8 @@ pub mod tests {
             Instruction::new(Opcode::SRL, 31, 29, 4, false, true),
         ];
         let program = Program::new(instructions, 0, 0);
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 2);
     }
 
@@ -1356,8 +1562,8 @@ pub mod tests {
             Instruction::new(Opcode::SRA, 31, 29, 4, false, true),
         ];
         let program = Program::new(instructions, 0, 0);
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 2);
     }
 
@@ -1370,8 +1576,8 @@ pub mod tests {
             Instruction::new(Opcode::SLT, 31, 29, 37, false, true),
         ];
         let program = Program::new(instructions, 0, 0);
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 0);
     }
 
@@ -1384,8 +1590,8 @@ pub mod tests {
             Instruction::new(Opcode::SLTU, 31, 29, 37, false, true),
         ];
         let program = Program::new(instructions, 0, 0);
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 0);
     }
 
@@ -1403,8 +1609,8 @@ pub mod tests {
             Instruction::new(Opcode::JALR, 5, 11, 8, false, true),
         ];
         let program = Program::new(instructions, 0, 0);
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.registers()[Register::X5 as usize], 8);
         assert_eq!(runtime.registers()[Register::X11 as usize], 100);
         assert_eq!(runtime.state.pc, 108);
@@ -1417,8 +1623,8 @@ pub mod tests {
             Instruction::new(opcode, 12, 10, 11, false, false),
         ];
         let program = Program::new(instructions, 0, 0);
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
         assert_eq!(runtime.registers()[Register::X12 as usize], expected);
     }
 
@@ -1635,8 +1841,8 @@ pub mod tests {
     #[test]
     fn test_simple_memory_program_run() {
         let program = simple_memory_program();
-        let mut runtime = Runtime::new(program);
-        runtime.run();
+        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
+        runtime.run().unwrap();
 
         // Assert SW & LW case
         assert_eq!(runtime.register(Register::X28), 0x12348765);

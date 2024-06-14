@@ -9,25 +9,6 @@ use rayon_scan::ScanParallelIterator;
 
 use crate::{air::MultiTableAirBuilder, lookup::Interaction};
 
-/// Generates powers of a random element based on how many interactions there are in the chip.
-///
-/// These elements are used to uniquely fingerprint each interaction.
-#[inline]
-pub fn generate_interaction_rlc_elements<F: Field, AF: AbstractField>(
-    sends: &[Interaction<F>],
-    receives: &[Interaction<F>],
-    random_element: AF,
-) -> Vec<AF> {
-    let n = sends
-        .iter()
-        .chain(receives.iter())
-        .map(|interaction| interaction.argument_index())
-        .max()
-        .unwrap_or(0)
-        + 1;
-    random_element.powers().skip(1).take(n).collect::<Vec<_>>()
-}
-
 #[inline]
 #[allow(clippy::too_many_arguments)]
 pub fn populate_permutation_row<F: PrimeField, EF: ExtensionField<F>>(
@@ -36,7 +17,7 @@ pub fn populate_permutation_row<F: PrimeField, EF: ExtensionField<F>>(
     main_row: &[F],
     sends: &[Interaction<F>],
     receives: &[Interaction<F>],
-    alphas: &[EF],
+    alpha: EF,
     betas: Powers<EF>,
     batch_size: usize,
 ) {
@@ -45,16 +26,16 @@ pub fn populate_permutation_row<F: PrimeField, EF: ExtensionField<F>>(
         .map(|int| (int, true))
         .chain(receives.iter().map(|int| (int, false)))
         .chunks(batch_size);
-    let num_chunks = (sends.len() + receives.len() + 1) / batch_size;
-    debug_assert_eq!(num_chunks + 1, row.len());
     // Compute the denominators \prod_{i\in B} row_fingerprint(alpha, beta).
     for (value, chunk) in row.iter_mut().zip(interaction_chunks) {
         *value = chunk
             .into_iter()
             .map(|(interaction, is_send)| {
-                let alpha = alphas[interaction.argument_index()];
                 let mut denominator = alpha;
-                for (columns, beta) in interaction.values.iter().zip(betas.clone()) {
+                let mut betas = betas.clone();
+                denominator +=
+                    betas.next().unwrap() * EF::from_canonical_usize(interaction.argument_index());
+                for (columns, beta) in interaction.values.iter().zip(betas) {
                     denominator += beta * columns.apply::<F, F>(preprocessed_row, main_row)
                 }
                 let mut mult = interaction
@@ -71,6 +52,11 @@ pub fn populate_permutation_row<F: PrimeField, EF: ExtensionField<F>>(
     }
 }
 
+#[inline]
+pub const fn permutation_trace_width(num_interactions: usize, batch_size: usize) -> usize {
+    num_interactions.div_ceil(batch_size) + 1
+}
+
 /// Generates the permutation trace for the given chip and main trace based on a variant of LogUp.
 ///
 /// The permutation trace has (N+1)*EF::NUM_COLS columns, where N is the number of interactions in
@@ -79,12 +65,12 @@ pub(crate) fn generate_permutation_trace<F: PrimeField, EF: ExtensionField<F>>(
     sends: &[Interaction<F>],
     receives: &[Interaction<F>],
     preprocessed: Option<&RowMajorMatrix<F>>,
-    main: &mut RowMajorMatrix<F>,
+    main: &RowMajorMatrix<F>,
     random_elements: &[EF],
     batch_size: usize,
 ) -> RowMajorMatrix<EF> {
     // Generate the RLC elements to uniquely identify each interaction.
-    let alphas = generate_interaction_rlc_elements(sends, receives, random_elements[0]);
+    let alpha = random_elements[0];
 
     // Generate the RLC elements to uniquely identify each item in the looked up tuple.
     let betas = random_elements[1].powers();
@@ -96,7 +82,7 @@ pub(crate) fn generate_permutation_trace<F: PrimeField, EF: ExtensionField<F>>(
     //
     // where f_{i, c_k} is the value at row i for column c_k. The computed value is essentially a
     // fingerprint for the interaction.
-    let permutation_trace_width = (sends.len() + receives.len() + 1) / batch_size + 1;
+    let permutation_trace_width = permutation_trace_width(sends.len() + receives.len(), batch_size);
     let height = main.height();
 
     let mut permutation_trace = RowMajorMatrix::new(
@@ -110,16 +96,16 @@ pub(crate) fn generate_permutation_trace<F: PrimeField, EF: ExtensionField<F>>(
         Some(prep) => {
             permutation_trace
                 .par_rows_mut()
-                .zip_eq(prep.par_rows())
-                .zip_eq(main.par_rows())
+                .zip_eq(prep.par_row_slices())
+                .zip_eq(main.par_row_slices())
                 .for_each(|((row, prep_row), main_row)| {
                     populate_permutation_row(
                         row,
-                        prep_row.collect::<Vec<_>>().as_slice(),
-                        main_row.collect::<Vec<_>>().as_slice(),
+                        prep_row,
+                        main_row,
                         sends,
                         receives,
-                        &alphas,
+                        alpha,
                         betas.clone(),
                         batch_size,
                     )
@@ -128,7 +114,7 @@ pub(crate) fn generate_permutation_trace<F: PrimeField, EF: ExtensionField<F>>(
         None => {
             permutation_trace
                 .par_rows_mut()
-                .zip_eq(main.par_rows_mut())
+                .zip_eq(main.par_row_slices())
                 .for_each(|(row, main_row)| {
                     populate_permutation_row(
                         row,
@@ -136,7 +122,7 @@ pub(crate) fn generate_permutation_trace<F: PrimeField, EF: ExtensionField<F>>(
                         main_row,
                         sends,
                         receives,
-                        &alphas,
+                        alpha,
                         betas.clone(),
                         batch_size,
                     )
@@ -205,16 +191,31 @@ pub fn eval_permutation_constraints<F, AB>(
     let perm_next = perm.row_slice(1);
     let perm_next: &[AB::VarEF] = (*perm_next).borrow();
 
-    let alphas = generate_interaction_rlc_elements(sends, receives, alpha);
-    let betas = beta.powers();
-
     // Ensure that each batch sum m_i/f_i is computed correctly.
     let interaction_chunks = &sends
         .iter()
         .map(|int| (int, true))
         .chain(receives.iter().map(|int| (int, false)))
         .chunks(batch_size);
-    for (entry, chunk) in perm_local.iter().zip(interaction_chunks) {
+
+    assert_eq!(
+        interaction_chunks.into_iter().count(),
+        perm_width - 1,
+        "Number of sends: {}, receives: {}, batch size: {}, perm width: {}",
+        sends.len(),
+        receives.len(),
+        batch_size,
+        perm_width - 1
+    );
+    assert_eq!(
+        perm_width,
+        permutation_trace_width(sends.len() + receives.len(), batch_size)
+    );
+
+    for (entry, chunk) in perm_local[0..perm_local.len() - 1]
+        .iter()
+        .zip(interaction_chunks)
+    {
         // Assert that the i-eth entry is equal to the sum_i m_i/rlc_i by constraints:
         // entry * \prod_i rlc_i = \sum_i m_i * \prod_{j!=i} rlc_j.
 
@@ -223,12 +224,14 @@ pub fn eval_permutation_constraints<F, AB>(
         let mut rlcs: Vec<AB::ExprEF> = Vec::with_capacity(batch_size);
         let mut multiplicities: Vec<AB::Expr> = Vec::with_capacity(batch_size);
         for (interaction, is_send) in chunk {
-            let mut rlc = AB::ExprEF::zero();
+            let mut rlc = alpha.clone();
+            let mut betas = beta.powers();
+            rlc += betas.next().unwrap()
+                * AB::ExprEF::from_canonical_usize(interaction.argument_index());
             for (field, beta) in interaction.values.iter().zip(betas.clone()) {
                 let elem = field.apply::<AB::Expr, AB::Var>(&preprocessed_local, main_local);
                 rlc += beta * elem;
             }
-            rlc += alphas[interaction.argument_index()].clone();
             rlcs.push(rlc);
 
             let send_factor = if is_send { AB::F::one() } else { -AB::F::one() };
