@@ -3,9 +3,11 @@ use std::fmt;
 use std::sync::Arc;
 
 use strum_macros::EnumIter;
+use typenum::{U16, U32, U64, U8};
 
 use crate::runtime::{Register, Runtime};
 use crate::stark::Blake3CompressInnerChip;
+use crate::syscall::precompiles::bn254_scalar::{Bn254ScalarMacChip, Bn254ScalarMulChip};
 use crate::syscall::precompiles::edwards::EdAddAssignChip;
 use crate::syscall::precompiles::edwards::EdDecompressChip;
 use crate::syscall::precompiles::keccak256::KeccakPermuteChip;
@@ -15,8 +17,9 @@ use crate::syscall::precompiles::weierstrass::WeierstrassAddAssignChip;
 use crate::syscall::precompiles::weierstrass::WeierstrassDecompressChip;
 use crate::syscall::precompiles::weierstrass::WeierstrassDoubleAssignChip;
 use crate::syscall::{
-    SyscallCommit, SyscallCommitDeferred, SyscallEnterUnconstrained, SyscallExitUnconstrained,
-    SyscallHalt, SyscallHintLen, SyscallHintRead, SyscallVerifySP1Proof, SyscallWrite,
+    MemCopyChip, SyscallCommit, SyscallCommitDeferred, SyscallEnterUnconstrained,
+    SyscallExitUnconstrained, SyscallHalt, SyscallHintLen, SyscallHintRead, SyscallVerifySP1Proof,
+    SyscallWrite,
 };
 use crate::utils::ec::edwards::ed25519::{Ed25519, Ed25519Parameters};
 use crate::utils::ec::weierstrass::bls12_381::Bls12381;
@@ -103,6 +106,18 @@ pub enum SyscallCode {
 
     /// Executes the `BLS12381_DOUBLE` precompile.
     BLS12381_DOUBLE = 0x00_00_01_1F,
+
+    /// Execute the `BN254_SCALAR_MUL` precompile.
+    BN254_SCALAR_MUL = 0x00_01_01_20,
+
+    /// Execute the `BN254_SCALAR_MAC` precompile.
+    BN254_SCALAR_MAC = 0x00_01_01_21,
+
+    /// Execute the `MEMCPY_32` precompile.
+    MEMCPY_32 = 0x00_00_01_30,
+
+    /// Execute the `MEMCPY_64` precompile.
+    MEMCPY_64 = 0x00_00_01_31,
 }
 
 impl SyscallCode {
@@ -133,6 +148,10 @@ impl SyscallCode {
             0x00_00_00_F1 => SyscallCode::HINT_READ,
             0x00_00_01_1D => SyscallCode::UINT256_MUL,
             0x00_00_01_1C => SyscallCode::BLS12381_DECOMPRESS,
+            0x00_01_01_20 => SyscallCode::BN254_SCALAR_MUL,
+            0x00_01_01_21 => SyscallCode::BN254_SCALAR_MAC,
+            0x00_00_01_30 => SyscallCode::MEMCPY_32,
+            0x00_00_01_31 => SyscallCode::MEMCPY_64,
             _ => panic!("invalid syscall number: {}", value),
         }
     }
@@ -346,6 +365,23 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
         Arc::new(WeierstrassDecompressChip::<Bls12381>::new()),
     );
     syscall_map.insert(SyscallCode::UINT256_MUL, Arc::new(Uint256MulChip::new()));
+    syscall_map.insert(
+        SyscallCode::BN254_SCALAR_MUL,
+        Arc::new(Bn254ScalarMulChip::new()),
+    );
+    syscall_map.insert(
+        SyscallCode::BN254_SCALAR_MAC,
+        Arc::new(Bn254ScalarMacChip::new()),
+    );
+
+    syscall_map.insert(
+        SyscallCode::MEMCPY_32,
+        Arc::new(MemCopyChip::<U8, U32>::new()),
+    );
+    syscall_map.insert(
+        SyscallCode::MEMCPY_64,
+        Arc::new(MemCopyChip::<U16, U64>::new()),
+    );
 
     syscall_map
 }
@@ -442,6 +478,12 @@ mod tests {
                 SyscallCode::HINT_READ => assert_eq!(code as u32, sp1_zkvm::syscalls::HINT_READ),
                 SyscallCode::BLS12381_DECOMPRESS => {
                     assert_eq!(code as u32, sp1_zkvm::syscalls::BLS12381_DECOMPRESS)
+                }
+                SyscallCode::BN254_SCALAR_MUL => {
+                    assert_eq!(code as u32, sp1_zkvm::syscalls::BN254_SCALAR_MUL)
+                }
+                SyscallCode::BN254_SCALAR_MAC => {
+                    assert_eq!(code as u32, sp1_zkvm::syscalls::BN254_SCALAR_MAC)
                 }
             }
         }

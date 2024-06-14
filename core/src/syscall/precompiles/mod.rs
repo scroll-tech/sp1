@@ -1,4 +1,5 @@
 pub mod blake3;
+pub mod bn254_scalar;
 pub mod edwards;
 pub mod keccak256;
 pub mod sha256;
