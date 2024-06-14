@@ -172,16 +172,15 @@ pub fn create_bn254_scalar_arith_event(
 #[cfg(test)]
 mod tests {
     use crate::{
-        runtime::Program,
-        runtime::Runtime,
-        utils::{run_test, setup_logger, tests::BN254_SCALAR_ARITH_ELF},
+        runtime::{Program, Runtime},
+        utils::{run_test, setup_logger, tests::BN254_SCALAR_ARITH_ELF, SP1CoreOpts},
     };
 
     #[test]
     fn test_bn254_scalar_arith_simple() {
         setup_logger();
         let program = Program::from(BN254_SCALAR_ARITH_ELF);
-        let mut rt = Runtime::new(program);
+        let mut rt = Runtime::new(program, SP1CoreOpts::default());
         rt.run();
         // run_test(program).unwrap();
     }

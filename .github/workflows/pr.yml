@@ -26,7 +26,7 @@ concurrency:
 jobs:
   test-x86:
     name: Test (x86-64)
-    runs-on: runs-on,runner=64cpu-linux-x64
+    runs-on: [self-hosted, Linux, X64]
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
@@ -88,7 +88,7 @@ jobs:
 
   lint:
     name: Formatting & Clippy
-    runs-on: runs-on,runner=8cpu-linux-x64
+    runs-on: [self-hosted, Linux, X64]
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
@@ -116,7 +116,7 @@ jobs:
 
   examples:
     name: Examples
-    runs-on: runs-on,runner=8cpu-linux-x64
+    runs-on: [self-hosted, Linux, X64]
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
@@ -145,7 +145,7 @@ jobs:
 
   cli:
     name: CLI
-    runs-on: runs-on,runner=8cpu-linux-x64
+    runs-on: [self-hosted, Linux, X64]
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
