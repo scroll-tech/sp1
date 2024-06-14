@@ -26,7 +26,6 @@ use crate::syscall::precompiles::uint256::Uint256MulEvent;
 use crate::syscall::precompiles::ECDecompressEvent;
 use crate::syscall::precompiles::{ECAddEvent, ECDoubleEvent};
 use crate::syscall::MemCopyEvent;
-use crate::utils::env;
 use crate::utils::SP1CoreOpts;
 
 /// A record of the execution of a program. Contains event data for everything that happened during

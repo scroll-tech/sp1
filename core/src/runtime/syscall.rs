@@ -376,11 +376,11 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
 
     syscall_map.insert(
         SyscallCode::MEMCPY_32,
-        Rc::new(MemCopyChip::<U8, U32>::new()),
+        Arc::new(MemCopyChip::<U8, U32>::new()),
     );
     syscall_map.insert(
         SyscallCode::MEMCPY_64,
-        Rc::new(MemCopyChip::<U16, U64>::new()),
+        Arc::new(MemCopyChip::<U16, U64>::new()),
     );
 
     syscall_map

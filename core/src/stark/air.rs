@@ -7,6 +7,7 @@ use crate::StarkGenericConfig;
 use p3_field::PrimeField32;
 pub use riscv_chips::*;
 use tracing::instrument;
+use typenum::{U16, U32, U64, U8};
 
 /// A module for importing all the different RISC-V chips.
 pub(crate) mod riscv_chips {
