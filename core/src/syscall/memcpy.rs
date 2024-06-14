@@ -11,7 +11,7 @@ use sp1_derive::AlignedBorrow;
 
 use crate::bytes::event::ByteRecord;
 use crate::operations::field::params::Limbs;
-use crate::utils::{limbs_from_access, limbs_from_prev_access};
+use crate::utils::{limbs_from_access, limbs_from_prev_access, pad_rows};
 use crate::{
     air::MachineAir,
     memory::{MemoryReadCols, MemoryWriteCols},
@@ -144,6 +144,8 @@ impl<F: PrimeField32, NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sync
             rows.push(row);
         }
         output.add_byte_lookup_events(new_byte_lookup_events);
+
+        pad_rows(&mut rows, || vec![F::zero(); Self::NUM_COLS]);
 
         RowMajorMatrix::new(
             rows.into_iter().flatten().collect::<Vec<_>>(),

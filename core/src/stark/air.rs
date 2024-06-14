@@ -186,11 +186,10 @@ impl<F: PrimeField32> RiscvAir<F> {
         chips.push(RiscvAir::MemoryFinal(memory_finalize));
         let program_memory_init = MemoryProgramChip::new();
         chips.push(RiscvAir::ProgramMemory(program_memory_init));
-        let byte = ByteChip::default();
-        chips.push(RiscvAir::ByteLookup(byte));
-
         chips.push(RiscvAir::MemCpy32(MemCopyChip::new()));
         chips.push(RiscvAir::MemCpy64(MemCopyChip::new()));
+        let byte = ByteChip::default();
+        chips.push(RiscvAir::ByteLookup(byte));
 
         chips
     }
