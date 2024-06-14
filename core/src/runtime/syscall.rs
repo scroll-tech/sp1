@@ -118,6 +118,10 @@ pub enum SyscallCode {
 
     /// Execute the `MEMCPY_64` precompile.
     MEMCPY_64 = 0x00_00_01_31,
+
+    /// Just a debug marker
+    #[cfg(feature = "debug-syscall")]
+    DEBUG = 0x00_00_00_FF,
 }
 
 impl SyscallCode {
@@ -152,6 +156,8 @@ impl SyscallCode {
             0x00_01_01_21 => SyscallCode::BN254_SCALAR_MAC,
             0x00_00_01_30 => SyscallCode::MEMCPY_32,
             0x00_00_01_31 => SyscallCode::MEMCPY_64,
+            #[cfg(feature = "debug-syscall")]
+            0x00_00_00_FF => SyscallCode::DEBUG,
             _ => panic!("invalid syscall number: {}", value),
         }
     }
@@ -383,6 +389,12 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
         Arc::new(MemCopyChip::<U16, U64>::new()),
     );
 
+    #[cfg(feature = "debug-syscall")]
+    syscall_map.insert(
+        SyscallCode::DEBUG,
+        Arc::new(crate::syscall::SyscallDebug::new()),
+    );
+
     syscall_map
 }
 
@@ -485,6 +497,8 @@ mod tests {
                 SyscallCode::BN254_SCALAR_MAC => {
                     assert_eq!(code as u32, sp1_zkvm::syscalls::BN254_SCALAR_MAC)
                 }
+                #[cfg(feature = "debug-syscall")]
+                SyscallCode::DEBUG => assert_eq!(code as u32, sp1_zkvm::syscalls::DEBUG),
             }
         }
     }
