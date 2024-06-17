@@ -259,7 +259,7 @@ dependencies = [
 [[package]]
 name = "halo2curves"
 version = "0.3.3"
-source = "git+https://github.com/scroll-tech/halo2curves.git?branch=feat/sp1#366a78b34dbf3ebaed78435f8f16e033a7bcecfa"
+source = "git+https://github.com/scroll-tech/halo2curves.git?branch=feat/sp1#1ab1d13289d83d18f422a00e487eb9d4828f31fb"
 dependencies = [
  "ff",
  "group",
