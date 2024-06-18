@@ -210,7 +210,7 @@ checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 [[package]]
 name = "ff"
 version = "0.13.0"
-source = "git+https://github.com/scroll-tech/ff?branch=feat/sp1#7e94aa6726837138b1b8346ec55b6ce6b593dc96"
+source = "git+https://github.com/scroll-tech/ff?branch=feat/sp1#6f6a5313aad01afbc6d62af90433dde93dcd7e9a"
 dependencies = [
  "bitvec",
  "rand_core",
@@ -259,7 +259,7 @@ dependencies = [
 [[package]]
 name = "halo2curves"
 version = "0.3.3"
-source = "git+https://github.com/scroll-tech/halo2curves.git?branch=feat/sp1#366a78b34dbf3ebaed78435f8f16e033a7bcecfa"
+source = "git+https://github.com/scroll-tech/halo2curves.git?branch=feat/sp1#a4e6139965ad0b97d130a7c48fdaeae1ceba3375"
 dependencies = [
  "ff",
  "group",
@@ -494,7 +494,7 @@ dependencies = [
 [[package]]
 name = "poseidon-base"
 version = "0.1.0"
-source = "git+https://github.com/scroll-tech/poseidon-circuit.git?branch=feat/sp1#30d40848eae359cf8086a061a4d3bb81bf458f63"
+source = "git+https://github.com/scroll-tech/poseidon-circuit.git?branch=feat/sp1#3c5739a3c7a6583ff42af1a7612f59d2356544d3"
 dependencies = [
  "bitvec",
  "halo2curves",
