@@ -23,7 +23,7 @@ pub(crate) mod riscv_chips {
     pub use crate::memory::MemoryChip;
     pub use crate::program::ProgramChip;
     pub use crate::syscall::precompiles::blake3::Blake3CompressInnerChip;
-    pub use crate::syscall::precompiles::bn254_scalar::{Bn254ScalarMacChip, Bn254ScalarMulChip};
+    pub use crate::syscall::precompiles::bn254_scalar::Bn254ScalarMacChip;
     pub use crate::syscall::precompiles::edwards::EdAddAssignChip;
     pub use crate::syscall::precompiles::edwards::EdDecompressChip;
     pub use crate::syscall::precompiles::keccak256::KeccakPermuteChip;
@@ -103,8 +103,6 @@ pub enum RiscvAir<F: PrimeField32> {
     Bls12381Double(WeierstrassDoubleAssignChip<SwCurve<Bls12381Parameters>>),
     /// A precompile for uint256 mul.
     Uint256Mul(Uint256MulChip),
-    /// A precompile for bn254 scalar multiplication.
-    Bn254ScalarMul(Bn254ScalarMulChip),
     /// A precompile for bn254 scalar mul-add
     Bn254ScalarMac(Bn254ScalarMacChip),
     /// A precompile for decompressing a point on the BLS12-381 curve.
@@ -160,8 +158,6 @@ impl<F: PrimeField32> RiscvAir<F> {
         chips.push(RiscvAir::Bls12381Double(bls12381_double));
         let uint256_mul = Uint256MulChip::default();
         chips.push(RiscvAir::Uint256Mul(uint256_mul));
-        let bn254_scalar_mul = Bn254ScalarMulChip::new();
-        chips.push(RiscvAir::Bn254ScalarMul(bn254_scalar_mul));
         let bn254_scalar_mac = Bn254ScalarMacChip::new();
         chips.push(RiscvAir::Bn254ScalarMac(bn254_scalar_mac));
         let bls12381_decompress = WeierstrassDecompressChip::<SwCurve<Bls12381Parameters>>::new();

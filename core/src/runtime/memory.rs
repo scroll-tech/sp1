@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use tracing_subscriber::fmt::time;
 
 /// An record of a write to a memory address.
 #[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]

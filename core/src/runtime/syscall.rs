@@ -7,7 +7,7 @@ use typenum::{U16, U32, U64, U8};
 
 use crate::runtime::{Register, Runtime};
 use crate::stark::Blake3CompressInnerChip;
-use crate::syscall::precompiles::bn254_scalar::{Bn254ScalarMacChip, Bn254ScalarMulChip};
+use crate::syscall::precompiles::bn254_scalar::Bn254ScalarMacChip;
 use crate::syscall::precompiles::edwards::EdAddAssignChip;
 use crate::syscall::precompiles::edwards::EdDecompressChip;
 use crate::syscall::precompiles::keccak256::KeccakPermuteChip;
@@ -107,9 +107,6 @@ pub enum SyscallCode {
     /// Executes the `BLS12381_DOUBLE` precompile.
     BLS12381_DOUBLE = 0x00_00_01_1F,
 
-    /// Execute the `BN254_SCALAR_MUL` precompile.
-    BN254_SCALAR_MUL = 0x00_01_01_20,
-
     /// Execute the `BN254_SCALAR_MAC` precompile.
     BN254_SCALAR_MAC = 0x00_01_01_21,
 
@@ -148,7 +145,6 @@ impl SyscallCode {
             0x00_00_00_F1 => SyscallCode::HINT_READ,
             0x00_00_01_1D => SyscallCode::UINT256_MUL,
             0x00_00_01_1C => SyscallCode::BLS12381_DECOMPRESS,
-            0x00_01_01_20 => SyscallCode::BN254_SCALAR_MUL,
             0x00_01_01_21 => SyscallCode::BN254_SCALAR_MAC,
             0x00_00_01_30 => SyscallCode::MEMCPY_32,
             0x00_00_01_31 => SyscallCode::MEMCPY_64,
@@ -365,10 +361,7 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
         Arc::new(WeierstrassDecompressChip::<Bls12381>::new()),
     );
     syscall_map.insert(SyscallCode::UINT256_MUL, Arc::new(Uint256MulChip::new()));
-    syscall_map.insert(
-        SyscallCode::BN254_SCALAR_MUL,
-        Arc::new(Bn254ScalarMulChip::new()),
-    );
+
     syscall_map.insert(
         SyscallCode::BN254_SCALAR_MAC,
         Arc::new(Bn254ScalarMacChip::new()),
@@ -478,9 +471,6 @@ mod tests {
                 SyscallCode::HINT_READ => assert_eq!(code as u32, sp1_zkvm::syscalls::HINT_READ),
                 SyscallCode::BLS12381_DECOMPRESS => {
                     assert_eq!(code as u32, sp1_zkvm::syscalls::BLS12381_DECOMPRESS)
-                }
-                SyscallCode::BN254_SCALAR_MUL => {
-                    assert_eq!(code as u32, sp1_zkvm::syscalls::BN254_SCALAR_MUL)
                 }
                 SyscallCode::BN254_SCALAR_MAC => {
                     assert_eq!(code as u32, sp1_zkvm::syscalls::BN254_SCALAR_MAC)

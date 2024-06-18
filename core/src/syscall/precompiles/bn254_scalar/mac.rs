@@ -7,7 +7,7 @@ use p3_field::AbstractField;
 use p3_field::{Field, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_derive::AlignedBorrow;
-use typenum::U8;
+use typenum::{U12, U8};
 
 use crate::{
     air::MachineAir,
@@ -21,10 +21,9 @@ use crate::{
     utils::{ec::weierstrass::bn254::Bn254ScalarField, limbs_from_prev_access, pad_rows},
 };
 
-use super::{create_bn254_scalar_arith_event, Bn254FieldOperation, NUM_WORDS_PER_FE};
+use super::{create_bn254_scalar_arith_event, NUM_WORDS_PER_FE};
 
 const NUM_COLS: usize = core::mem::size_of::<Bn254ScalarMacCols<u8>>();
-const OP: Bn254FieldOperation = Bn254FieldOperation::Mac;
 
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
@@ -36,10 +35,11 @@ pub struct Bn254ScalarMacCols<T> {
     arg1_ptr: T,
     arg2_ptr: T,
     arg1_access: [MemoryWriteCols<T>; NUM_WORDS_PER_FE],
-    arg2_access: [MemoryReadCols<T>; 2],
+    arg2_access: [MemoryReadCols<T>; 3],
     a_access: [MemoryReadCols<T>; NUM_WORDS_PER_FE],
     b_access: [MemoryReadCols<T>; NUM_WORDS_PER_FE],
-    mul_eval: FieldOpCols<T, Bn254ScalarField>,
+    c_access: [MemoryReadCols<T>; NUM_WORDS_PER_FE],
+    mul_eval: [FieldOpCols<T, Bn254ScalarField>; 2],
     add_eval: FieldOpCols<T, Bn254ScalarField>,
 }
 
@@ -58,7 +58,7 @@ impl Syscall for Bn254ScalarMacChip {
         arg1: u32,
         arg2: u32,
     ) -> Option<u32> {
-        let event = create_bn254_scalar_arith_event(rt, arg1, arg2, OP);
+        let event = create_bn254_scalar_arith_event(rt, arg1, arg2);
         rt.record_mut().bn254_scalar_arith_events.push(event);
 
         None
@@ -82,17 +82,14 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
         let mut rows = vec![];
         let mut new_byte_lookup_events = vec![];
 
-        for event in input
-            .bn254_scalar_arith_events
-            .iter()
-            .filter(|e| e.op == OP)
-        {
+        for event in input.bn254_scalar_arith_events.iter() {
             let mut row = [F::zero(); NUM_COLS];
             let cols: &mut Bn254ScalarMacCols<F> = row.as_mut_slice().borrow_mut();
 
             let arg1 = event.arg1.prev_value_as_biguint();
-            let a = event.a.as_ref().unwrap().value_as_biguint();
-            let b = event.b.as_ref().unwrap().value_as_biguint();
+            let a = event.a.value_as_biguint();
+            let b = event.b.value_as_biguint();
+            let c = event.c.value_as_biguint();
 
             cols.is_real = F::one();
             cols.shard = F::from_canonical_u32(event.shard);
@@ -101,7 +98,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
             cols.arg1_ptr = F::from_canonical_u32(event.arg1.ptr);
             cols.arg2_ptr = F::from_canonical_u32(event.arg2.ptr);
 
-            let mul = cols.mul_eval.populate(
+            let mul_a_b = cols.mul_eval[0].populate(
                 &mut new_byte_lookup_events,
                 event.shard,
                 event.channel,
@@ -109,12 +106,21 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
                 &b,
                 FieldOperation::Mul,
             );
-            cols.add_eval.populate(
+            let mul_arg1_c = cols.mul_eval[1].populate(
                 &mut new_byte_lookup_events,
                 event.shard,
                 event.channel,
                 &arg1,
-                &mul,
+                &c,
+                FieldOperation::Mul,
+            );
+
+            cols.add_eval.populate(
+                &mut new_byte_lookup_events,
+                event.shard,
+                event.channel,
+                &mul_a_b,
+                &mul_arg1_c,
                 FieldOperation::Add,
             );
 
@@ -125,26 +131,16 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
                     &mut new_byte_lookup_events,
                 );
             }
-            for i in 0..cols.arg2_access.len() {
-                cols.arg2_access[i].populate(
-                    event.channel,
-                    event.arg2.memory_records[i],
-                    &mut new_byte_lookup_events,
-                );
-            }
-            for i in 0..cols.a_access.len() {
-                cols.a_access[i].populate(
-                    event.channel,
-                    event.a.as_ref().unwrap().memory_records[i],
-                    &mut new_byte_lookup_events,
-                );
-            }
-            for i in 0..cols.b_access.len() {
-                cols.b_access[i].populate(
-                    event.channel,
-                    event.b.as_ref().unwrap().memory_records[i],
-                    &mut new_byte_lookup_events,
-                );
+
+            for (read_col, record) in cols
+                .arg2_access
+                .iter_mut()
+                .zip(event.arg2.memory_records.iter())
+                .chain(cols.a_access.iter_mut().zip(event.a.memory_records.iter()))
+                .chain(cols.b_access.iter_mut().zip(event.b.memory_records.iter()))
+                .chain(cols.c_access.iter_mut().zip(event.c.memory_records.iter()))
+            {
+                read_col.populate(event.channel, *record, &mut new_byte_lookup_events);
             }
 
             rows.push(row);
@@ -156,8 +152,8 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
             let cols: &mut Bn254ScalarMacCols<F> = row.as_mut_slice().borrow_mut();
 
             let zero = BigUint::zero();
-            cols.mul_eval
-                .populate(&mut vec![], 0, 0, &zero, &zero, FieldOperation::Mul);
+            cols.mul_eval[0].populate(&mut vec![], 0, 0, &zero, &zero, FieldOperation::Mul);
+            cols.mul_eval[1].populate(&mut vec![], 0, 0, &zero, &zero, FieldOperation::Mul);
             cols.add_eval
                 .populate(&mut vec![], 0, 0, &zero, &zero, FieldOperation::Add);
 
@@ -168,12 +164,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
-        shard
-            .bn254_scalar_arith_events
-            .iter()
-            .filter(|e| e.op == OP)
-            .count()
-            != 0
+        !shard.bn254_scalar_arith_events.is_empty()
     }
 }
 
@@ -196,13 +187,15 @@ where
 
         let arg1: Limbs<<AB as AirBuilder>::Var, <Bn254ScalarField as NumLimbs>::Limbs> =
             limbs_from_prev_access(&row.arg1_access);
-        let arg2: Limbs<<AB as AirBuilder>::Var, U8> = limbs_from_prev_access(&row.arg2_access);
+        let arg2: Limbs<<AB as AirBuilder>::Var, U12> = limbs_from_prev_access(&row.arg2_access);
         let a: Limbs<<AB as AirBuilder>::Var, <Bn254ScalarField as NumLimbs>::Limbs> =
             limbs_from_prev_access(&row.a_access);
         let b: Limbs<<AB as AirBuilder>::Var, <Bn254ScalarField as NumLimbs>::Limbs> =
             limbs_from_prev_access(&row.b_access);
+        let c: Limbs<<AB as AirBuilder>::Var, <Bn254ScalarField as NumLimbs>::Limbs> =
+            limbs_from_prev_access(&row.c_access);
 
-        row.mul_eval.eval(
+        row.mul_eval[0].eval(
             builder,
             &a,
             &b,
@@ -211,10 +204,19 @@ where
             row.channel,
             row.is_real,
         );
-        row.add_eval.eval(
+        row.mul_eval[1].eval(
             builder,
             &arg1,
-            &row.mul_eval.result,
+            &c,
+            FieldOperation::Mul,
+            row.shard,
+            row.channel,
+            row.is_real,
+        );
+        row.add_eval.eval(
+            builder,
+            &row.mul_eval[0].result,
+            &row.mul_eval[1].result,
             FieldOperation::Add,
             row.shard,
             row.channel,
@@ -264,6 +266,15 @@ where
                 acc * AB::Expr::from_canonical_u16(0x100) + b
             });
 
+        let c_ptr = arg2.0[8..12]
+            .iter()
+            .rev()
+            .cloned()
+            .map(|v| v.into())
+            .fold(AB::Expr::zero(), |acc, b| {
+                acc * AB::Expr::from_canonical_u16(0x100) + b
+            });
+
         builder.eval_memory_access_slice(
             row.shard,
             row.channel,
@@ -279,6 +290,15 @@ where
             row.clk.into(),
             b_ptr,
             &row.b_access,
+            row.is_real,
+        );
+
+        builder.eval_memory_access_slice(
+            row.shard,
+            row.channel,
+            row.clk.into(),
+            c_ptr,
+            &row.c_access,
             row.is_real,
         );
 
