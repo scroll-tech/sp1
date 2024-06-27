@@ -1,3 +1,4 @@
+mod hooks;
 mod instruction;
 mod io;
 mod memory;
@@ -5,24 +6,28 @@ mod opcode;
 mod program;
 mod record;
 mod register;
+mod report;
 mod state;
 mod syscall;
 #[macro_use]
 mod utils;
+mod subproof;
 
+pub use hooks::*;
 pub use instruction::*;
 pub use memory::*;
 pub use opcode::*;
 pub use program::*;
 pub use record::*;
 pub use register::*;
+pub use report::*;
 pub use state::*;
+pub use subproof::*;
 pub use syscall::*;
 pub use utils::*;
 
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
@@ -30,6 +35,8 @@ use std::sync::Arc;
 
 use thiserror::Error;
 
+use crate::alu::create_alu_lookup_id;
+use crate::alu::create_alu_lookups;
 use crate::bytes::NUM_BYTE_LOOKUP_CHANNELS;
 use crate::memory::MemoryInitializeFinalizeEvent;
 use crate::utils::SP1CoreOpts;
@@ -42,7 +49,7 @@ use crate::{alu::AluEvent, cpu::CpuEvent};
 ///
 /// For more information on the RV32IM instruction set, see the following:
 /// https://www.cs.sfu.ca/~ashriram/Courses/CS295/assets/notebooks/RISCV/RISCV_CARD.pdf
-pub struct Runtime {
+pub struct Runtime<'a> {
     /// The program.
     pub program: Arc<Program>,
 
@@ -87,49 +94,13 @@ pub struct Runtime {
     pub report: ExecutionReport,
 
     /// Whether we should write to the report.
-    pub should_report: bool,
-}
+    pub print_report: bool,
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub struct ExecutionReport {
-    pub instruction_counts: HashMap<Opcode, u64>,
-    pub syscall_counts: HashMap<SyscallCode, u64>,
-}
+    /// Verifier used to sanity check `verify_sp1_proof` during runtime.
+    pub subproof_verifier: Arc<dyn SubproofVerifier + 'a>,
 
-impl ExecutionReport {
-    pub fn total_instruction_count(&self) -> u64 {
-        self.instruction_counts.values().sum()
-    }
-
-    pub fn total_syscall_count(&self) -> u64 {
-        self.syscall_counts.values().sum()
-    }
-}
-
-impl Display for ExecutionReport {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        writeln!(f, "Instruction Counts:")?;
-        let mut sorted_instructions = self.instruction_counts.iter().collect::<Vec<_>>();
-
-        // Sort instructions by opcode name
-        sorted_instructions.sort_by_key(|&(opcode, _)| opcode.to_string());
-        for (opcode, count) in sorted_instructions {
-            writeln!(f, "  {}: {}", opcode, count)?;
-        }
-        writeln!(f, "Total Instructions: {}", self.total_instruction_count())?;
-
-        writeln!(f, "Syscall Counts:")?;
-        let mut sorted_syscalls = self.syscall_counts.iter().collect::<Vec<_>>();
-
-        // Sort syscalls by syscall name
-        sorted_syscalls.sort_by_key(|&(syscall, _)| format!("{:?}", syscall));
-        for (syscall, count) in sorted_syscalls {
-            writeln!(f, "  {}: {}", syscall, count)?;
-        }
-        writeln!(f, "Total Syscall Count: {}", self.total_syscall_count())?;
-
-        Ok(())
-    }
+    /// Registry of hooks, to be invoked by writing to certain file descriptors.
+    pub hook_registry: HookRegistry<'a>,
 }
 
 #[derive(Error, Debug)]
@@ -146,7 +117,7 @@ pub enum ExecutionError {
     Unimplemented(),
 }
 
-impl Runtime {
+impl<'a> Runtime<'a> {
     // Create a new runtime from a program.
     pub fn new(program: Program, opts: SP1CoreOpts) -> Self {
         // Create a shared reference to the program.
@@ -189,9 +160,22 @@ impl Runtime {
             syscall_map,
             emit_events: true,
             max_syscall_cycles,
-            report: Default::default(),
-            should_report: false,
+            report: ExecutionReport::default(),
+            print_report: false,
+            subproof_verifier: Arc::new(DefaultSubproofVerifier::new()),
+            hook_registry: HookRegistry::default(),
         }
+    }
+
+    /// Invokes the hook corresponding to the given file descriptor `fd` with the data `buf`,
+    /// returning the resulting data.
+    pub fn hook(&self, fd: u32, buf: &[u8]) -> Vec<Vec<u8>> {
+        self.hook_registry.table[&fd](self.hook_env(), buf)
+    }
+
+    /// Prepare a `HookEnv` for use by hooks.
+    pub fn hook_env(&self) -> HookEnv {
+        HookEnv { runtime: self }
     }
 
     /// Recover runtime state from a program and existing execution state.
@@ -280,16 +264,9 @@ impl Runtime {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
                 // If addr has a specific value to be initialized with, use that, otherwise 0.
-                let value = self.state.uninitialized_memory.remove(&addr).unwrap_or(0);
-
-                // Do not emit memory initialize events for address 0 as that is done in initialize.
-                if addr != 0 {
-                    self.record
-                        .memory_initialize_events
-                        .push(MemoryInitializeFinalizeEvent::initialize(addr, value, true));
-                }
+                let value = self.state.uninitialized_memory.get(&addr).unwrap_or(&0);
                 entry.insert(MemoryRecord {
-                    value,
+                    value: *value,
                     shard: 0,
                     timestamp: 0,
                 })
@@ -328,16 +305,10 @@ impl Runtime {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
                 // If addr has a specific value to be initialized with, use that, otherwise 0.
-                let value = self.state.uninitialized_memory.remove(&addr).unwrap_or(0);
+                let value = self.state.uninitialized_memory.get(&addr).unwrap_or(&0);
 
-                // Do not emit memory initialize events for address 0 as that is done in initialize.
-                if addr != 0 {
-                    self.record
-                        .memory_initialize_events
-                        .push(MemoryInitializeFinalizeEvent::initialize(addr, value, true));
-                }
                 entry.insert(MemoryRecord {
-                    value,
+                    value: *value,
                     shard: 0,
                     timestamp: 0,
                 })
@@ -445,6 +416,8 @@ impl Runtime {
         memory_store_value: Option<u32>,
         record: MemoryAccessRecord,
         exit_code: u32,
+        lookup_id: usize,
+        syscall_lookup_id: usize,
     ) {
         let cpu_event = CpuEvent {
             shard,
@@ -462,14 +435,25 @@ impl Runtime {
             memory: memory_store_value,
             memory_record: record.memory,
             exit_code,
+            alu_lookup_id: lookup_id,
+            syscall_lookup_id,
+            memory_add_lookup_id: create_alu_lookup_id(),
+            memory_sub_lookup_id: create_alu_lookup_id(),
+            branch_lt_lookup_id: create_alu_lookup_id(),
+            branch_gt_lookup_id: create_alu_lookup_id(),
+            branch_add_lookup_id: create_alu_lookup_id(),
+            jump_jal_lookup_id: create_alu_lookup_id(),
+            jump_jalr_lookup_id: create_alu_lookup_id(),
+            auipc_lookup_id: create_alu_lookup_id(),
         };
 
         self.record.cpu_events.push(cpu_event);
     }
 
     /// Emit an ALU event.
-    fn emit_alu(&mut self, clk: u32, opcode: Opcode, a: u32, b: u32, c: u32) {
+    fn emit_alu(&mut self, clk: u32, opcode: Opcode, a: u32, b: u32, c: u32, lookup_id: usize) {
         let event = AluEvent {
+            lookup_id,
             shard: self.shard(),
             clk,
             channel: self.channel(),
@@ -477,6 +461,7 @@ impl Runtime {
             a,
             b,
             c,
+            sub_lookups: create_alu_lookups(),
         };
         match opcode {
             Opcode::ADD => {
@@ -530,10 +515,18 @@ impl Runtime {
     }
 
     /// Set the destination register with the result and emit an ALU event.
-    fn alu_rw(&mut self, instruction: Instruction, rd: Register, a: u32, b: u32, c: u32) {
+    fn alu_rw(
+        &mut self,
+        instruction: Instruction,
+        rd: Register,
+        a: u32,
+        b: u32,
+        c: u32,
+        lookup_id: usize,
+    ) {
         self.rw(rd, a);
         if self.emit_events {
-            self.emit_alu(self.state.clk, instruction.opcode, a, b, c);
+            self.emit_alu(self.state.clk, instruction.opcode, a, b, c, lookup_id);
         }
     }
 
@@ -586,9 +579,12 @@ impl Runtime {
         let mut memory_store_value: Option<u32> = None;
         self.memory_accesses = MemoryAccessRecord::default();
 
-        if self.should_report && !self.unconstrained {
+        let lookup_id = create_alu_lookup_id();
+        let syscall_lookup_id = create_alu_lookup_id();
+
+        if self.print_report && !self.unconstrained {
             self.report
-                .instruction_counts
+                .opcode_counts
                 .entry(instruction.opcode)
                 .and_modify(|c| *c += 1)
                 .or_insert(1);
@@ -599,52 +595,52 @@ impl Runtime {
             Opcode::ADD => {
                 (rd, b, c) = self.alu_rr(instruction);
                 a = b.wrapping_add(c);
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::SUB => {
                 (rd, b, c) = self.alu_rr(instruction);
                 a = b.wrapping_sub(c);
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::XOR => {
                 (rd, b, c) = self.alu_rr(instruction);
                 a = b ^ c;
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::OR => {
                 (rd, b, c) = self.alu_rr(instruction);
                 a = b | c;
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::AND => {
                 (rd, b, c) = self.alu_rr(instruction);
                 a = b & c;
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::SLL => {
                 (rd, b, c) = self.alu_rr(instruction);
                 a = b.wrapping_shl(c);
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::SRL => {
                 (rd, b, c) = self.alu_rr(instruction);
                 a = b.wrapping_shr(c);
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::SRA => {
                 (rd, b, c) = self.alu_rr(instruction);
                 a = (b as i32).wrapping_shr(c) as u32;
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::SLT => {
                 (rd, b, c) = self.alu_rr(instruction);
                 a = if (b as i32) < (c as i32) { 1 } else { 0 };
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::SLTU => {
                 (rd, b, c) = self.alu_rr(instruction);
                 a = if b < c { 1 } else { 0 };
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
 
             // Load instructions.
@@ -832,7 +828,7 @@ impl Runtime {
                 b = self.rr(Register::X10, MemoryAccessPosition::B);
                 let syscall = SyscallCode::from_u32(syscall_id);
 
-                if self.should_report && !self.unconstrained {
+                if self.print_report && !self.unconstrained {
                     self.report
                         .syscall_counts
                         .entry(syscall)
@@ -843,8 +839,8 @@ impl Runtime {
                 let global_clk = self.state.global_clk;
                 let syscall_impl = self.get_syscall(syscall).cloned();
                 let mut precompile_rt = SyscallContext::new(self);
-
-                log::debug!(
+                precompile_rt.syscall_lookup_id = syscall_lookup_id;
+                log::trace!(
                     "[clk: {}, pc: 0x{:x}] ecall syscall_id=0x{:x}, b: 0x{:x}, c: 0x{:x}",
                     global_clk,
                     pc,
@@ -896,22 +892,22 @@ impl Runtime {
             Opcode::MUL => {
                 (rd, b, c) = self.alu_rr(instruction);
                 a = b.wrapping_mul(c);
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::MULH => {
                 (rd, b, c) = self.alu_rr(instruction);
                 a = (((b as i32) as i64).wrapping_mul((c as i32) as i64) >> 32) as u32;
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::MULHU => {
                 (rd, b, c) = self.alu_rr(instruction);
                 a = ((b as u64).wrapping_mul(c as u64) >> 32) as u32;
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::MULHSU => {
                 (rd, b, c) = self.alu_rr(instruction);
                 a = (((b as i32) as i64).wrapping_mul(c as i64) >> 32) as u32;
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::DIV => {
                 (rd, b, c) = self.alu_rr(instruction);
@@ -920,7 +916,7 @@ impl Runtime {
                 } else {
                     a = (b as i32).wrapping_div(c as i32) as u32;
                 }
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::DIVU => {
                 (rd, b, c) = self.alu_rr(instruction);
@@ -929,7 +925,7 @@ impl Runtime {
                 } else {
                     a = b.wrapping_div(c);
                 }
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::REM => {
                 (rd, b, c) = self.alu_rr(instruction);
@@ -938,7 +934,7 @@ impl Runtime {
                 } else {
                     a = (b as i32).wrapping_rem(c as i32) as u32;
                 }
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
             Opcode::REMU => {
                 (rd, b, c) = self.alu_rr(instruction);
@@ -947,7 +943,7 @@ impl Runtime {
                 } else {
                     a = b.wrapping_rem(c);
                 }
-                self.alu_rw(instruction, rd, a, b, c);
+                self.alu_rw(instruction, rd, a, b, c, lookup_id);
             }
 
             // See https://github.com/riscv-non-isa/riscv-asm-manual/blob/master/riscv-asm.md#instruction-aliases
@@ -984,6 +980,8 @@ impl Runtime {
                 memory_store_value,
                 self.memory_accesses,
                 exit_code,
+                lookup_id,
+                syscall_lookup_id,
             );
         };
         Ok(())
@@ -1019,6 +1017,7 @@ impl Runtime {
     /// Execute up to `self.shard_batch_size` cycles, returning the events emitted and whether the program ended.
     pub fn execute_record(&mut self) -> Result<(ExecutionRecord, bool), ExecutionError> {
         self.emit_events = true;
+        self.print_report = true;
         let done = self.execute()?;
         Ok((std::mem::take(&mut self.record), done))
     }
@@ -1026,6 +1025,7 @@ impl Runtime {
     /// Execute up to `self.shard_batch_size` cycles, returning a copy of the prestate and whether the program ended.
     pub fn execute_state(&mut self) -> Result<(ExecutionState, bool), ExecutionError> {
         self.emit_events = false;
+        self.print_report = false;
         let state = self.state.clone();
         let done = self.execute()?;
         Ok((state, done))
@@ -1035,7 +1035,7 @@ impl Runtime {
         self.state.clk = 0;
         self.state.channel = 0;
 
-        tracing::info!("loading memory image");
+        tracing::debug!("loading memory image");
         for (addr, value) in self.program.memory_image.iter() {
             self.state.memory.insert(
                 *addr,
@@ -1046,25 +1046,18 @@ impl Runtime {
                 },
             );
         }
-
-        // Create init event for register 0 because it needs to be the first row in MemoryInit.
-        self.record
-            .memory_initialize_events
-            .push(MemoryInitializeFinalizeEvent::initialize(0, 0, true));
-
-        tracing::info!("starting execution");
     }
 
     pub fn run_untraced(&mut self) -> Result<(), ExecutionError> {
         self.emit_events = false;
-        self.should_report = true;
+        self.print_report = true;
         while !self.execute()? {}
         Ok(())
     }
 
     pub fn run(&mut self) -> Result<(), ExecutionError> {
         self.emit_events = true;
-        self.should_report = true;
+        self.print_report = true;
         while !self.execute()? {}
         Ok(())
     }
@@ -1108,11 +1101,6 @@ impl Runtime {
     }
 
     fn postprocess(&mut self) {
-        tracing::info!(
-            "finished execution clk = {} pc = 0x{:x?}",
-            self.state.global_clk,
-            self.state.pc
-        );
         // Flush remaining stdout/stderr
         for (fd, buf) in self.io_buf.iter() {
             if !buf.is_empty() {
@@ -1133,6 +1121,14 @@ impl Runtime {
             buf.flush().unwrap();
         }
 
+        // Ensure that all proofs and input bytes were read, otherwise warn the user.
+        if self.state.proof_stream_ptr != self.state.proof_stream.len() {
+            panic!("Not all proofs were read. Proving will fail during recursion. Did you pass too many proofs in or forget to call verify_sp1_proof?");
+        }
+        if self.state.input_stream_ptr != self.state.input_stream.len() {
+            log::warn!("Not all input bytes were read.");
+        }
+
         // SECTION: Set up all MemoryInitializeFinalizeEvents needed for memory argument.
         let memory_finalize_events = &mut self.record.memory_finalize_events;
 
@@ -1145,7 +1141,7 @@ impl Runtime {
             None => &MemoryRecord {
                 value: 0,
                 shard: 0,
-                timestamp: 0,
+                timestamp: 1,
             },
         };
         memory_finalize_events.push(MemoryInitializeFinalizeEvent::finalize_from_record(
@@ -1153,13 +1149,29 @@ impl Runtime {
             addr_0_final_record,
         ));
 
+        let memory_initialize_events = &mut self.record.memory_initialize_events;
+        let addr_0_initialize_event =
+            MemoryInitializeFinalizeEvent::initialize(0, 0, addr_0_record.is_some());
+        memory_initialize_events.push(addr_0_initialize_event);
+
         for addr in self.state.memory.keys() {
             if addr == &0 {
-                continue; // We handle addr = 0 separately above.
+                // Handled above.
+                continue;
+            }
+
+            // Program memory is initialized in the MemoryProgram chip and doesn't require any events,
+            // so we only send init events for other memory addresses.
+            if !self.record.program.memory_image.contains_key(addr) {
+                let initial_value = self.state.uninitialized_memory.get(addr).unwrap_or(&0);
+                memory_initialize_events.push(MemoryInitializeFinalizeEvent::initialize(
+                    *addr,
+                    *initial_value,
+                    true,
+                ));
             }
 
             let record = *self.state.memory.get(addr).unwrap();
-
             memory_finalize_events.push(MemoryInitializeFinalizeEvent::finalize_from_record(
                 *addr, &record,
             ));
@@ -1205,64 +1217,19 @@ pub mod tests {
         Program::from(PANIC_ELF)
     }
 
+    fn _assert_send<T: Send>() {}
+
+    /// Runtime needs to be Send so we can use it across async calls.
+    fn _assert_runtime_is_send() {
+        _assert_send::<Runtime>();
+    }
+
     #[test]
     fn test_simple_program_run() {
         let program = simple_program();
         let mut runtime = Runtime::new(program, SP1CoreOpts::default());
         runtime.run().unwrap();
         assert_eq!(runtime.register(Register::X31), 42);
-    }
-
-    #[test]
-    fn test_ssz_withdrawals_program_run_report() {
-        let program = ssz_withdrawals_program();
-        let mut runtime = Runtime::new(program, SP1CoreOpts::default());
-        runtime.run().unwrap();
-        assert_eq!(runtime.report, {
-            use super::Opcode::*;
-            use super::SyscallCode::*;
-            super::ExecutionReport {
-                instruction_counts: [
-                    (LB, 10723),
-                    (DIVU, 6),
-                    (LW, 237094),
-                    (JALR, 38749),
-                    (XOR, 242242),
-                    (BEQ, 26917),
-                    (AND, 151701),
-                    (SB, 58448),
-                    (MUL, 4036),
-                    (SLTU, 16766),
-                    (ADD, 583439),
-                    (JAL, 5372),
-                    (LBU, 57950),
-                    (SRL, 293010),
-                    (SW, 312781),
-                    (ECALL, 2264),
-                    (BLTU, 43457),
-                    (BGEU, 5917),
-                    (BLT, 1141),
-                    (SUB, 12382),
-                    (BGE, 237),
-                    (MULHU, 1152),
-                    (BNE, 51442),
-                    (AUIPC, 19488),
-                    (OR, 301944),
-                    (SLL, 278698),
-                ]
-                .into(),
-                syscall_counts: [
-                    (COMMIT_DEFERRED_PROOFS, 8),
-                    (SHA_EXTEND, 1091),
-                    (COMMIT, 8),
-                    (WRITE, 65),
-                    (SHA_COMPRESS, 1091),
-                    (HALT, 1),
-                ]
-                .into(),
-            }
-        });
-        assert_eq!(runtime.report.total_instruction_count(), 2757356);
     }
 
     #[test]

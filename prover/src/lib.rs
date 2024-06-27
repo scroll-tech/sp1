@@ -18,6 +18,7 @@ pub mod verify;
 
 use std::borrow::Borrow;
 use std::path::Path;
+use std::sync::Arc;
 
 use p3_baby_bear::BabyBear;
 use p3_challenger::CanObserve;
@@ -59,6 +60,8 @@ pub use sp1_recursion_program::machine::{
 use tracing::instrument;
 pub use types::*;
 use utils::words_to_bytes;
+
+pub use sp1_core::SP1_CIRCUIT_VERSION;
 
 /// The configuration for the core prover.
 pub type CoreSC = BabyBearPoseidon2;
@@ -135,6 +138,12 @@ pub struct SP1Prover {
 
     /// The machine used for proving the wrapping step.
     pub wrap_machine: StarkMachine<OuterSC, WrapAir<<OuterSC as StarkGenericConfig>::Val>>,
+
+    /// The options for the core prover.
+    pub core_opts: SP1CoreOpts,
+
+    /// The options for the recursion prover.
+    pub recursion_opts: SP1CoreOpts,
 }
 
 impl SP1Prover {
@@ -192,6 +201,8 @@ impl SP1Prover {
             compress_machine,
             shrink_machine,
             wrap_machine,
+            core_opts: SP1CoreOpts::default(),
+            recursion_opts: SP1CoreOpts::recursion(),
         }
     }
 
@@ -239,8 +250,13 @@ impl SP1Prover {
     ) -> Result<SP1CoreProof, SP1CoreProverError> {
         let config = CoreSC::default();
         let program = Program::from(&pk.elf);
-        let opts = SP1CoreOpts::default();
-        let (proof, public_values_stream) = sp1_core::utils::prove(program, stdin, config, opts)?;
+        let (proof, public_values_stream) = sp1_core::utils::prove_with_subproof_verifier(
+            program,
+            stdin,
+            config,
+            self.core_opts,
+            Some(Arc::new(self)),
+        )?;
         let public_values = SP1PublicValues::from(&public_values_stream);
         Ok(SP1CoreProof {
             proof: SP1CoreProofData(proof.shard_proofs),
@@ -272,6 +288,7 @@ impl SP1Prover {
                 leaf_challenger,
                 initial_reconstruct_challenger: reconstruct_challenger.clone(),
                 is_complete,
+                total_core_shards: shard_proofs.len(),
             });
 
             for proof in batch.iter() {
@@ -304,6 +321,7 @@ impl SP1Prover {
         last_proof_pv: &PublicValues<Word<BabyBear>, BabyBear>,
         deferred_proofs: &[ShardProof<InnerSC>],
         batch_size: usize,
+        total_core_shards: usize,
     ) -> Vec<SP1DeferredMemoryLayout<'a, InnerSC, RecursionAir<BabyBear, 3>>> {
         // Prepare the inputs for the deferred proofs recursive verification.
         let mut deferred_digest = [Val::<InnerSC>::zero(); DIGEST_SIZE];
@@ -321,10 +339,11 @@ impl SP1Prover {
                 sp1_vk: vk,
                 sp1_machine: &self.core_machine,
                 end_pc: Val::<InnerSC>::zero(),
-                end_shard: last_proof_pv.shard,
+                end_shard: last_proof_pv.shard + BabyBear::one(),
                 leaf_challenger: leaf_challenger.clone(),
                 committed_value_digest: last_proof_pv.committed_value_digest.to_vec(),
                 deferred_proofs_digest: last_proof_pv.deferred_proofs_digest.to_vec(),
+                total_core_shards,
             });
 
             deferred_digest = Self::hash_deferred_proofs(deferred_digest, batch);
@@ -361,6 +380,7 @@ impl SP1Prover {
             &last_proof_pv,
             deferred_proofs,
             batch_size,
+            shard_proofs.len(),
         );
         (core_inputs, deferred_inputs)
     }
@@ -377,6 +397,7 @@ impl SP1Prover {
         let batch_size = 2;
 
         let shard_proofs = &proof.proof.0;
+        let total_core_shards = shard_proofs.len();
         // Get the leaf challenger.
         let mut leaf_challenger = self.core_machine.config().challenger();
         vk.vk.observe_into(&mut leaf_challenger);
@@ -394,39 +415,19 @@ impl SP1Prover {
             batch_size,
         );
 
-        let mut first_layer_proofs = Vec::new();
-        let opts = SP1CoreOpts::recursion();
+        let mut reduce_proofs = Vec::new();
+        let opts = self.recursion_opts;
         let shard_batch_size = opts.shard_batch_size;
         for inputs in core_inputs.chunks(shard_batch_size) {
             let proofs = inputs
                 .into_par_iter()
                 .map(|input| {
-                    let mut runtime = RecursionRuntime::<Val<InnerSC>, Challenge<InnerSC>, _>::new(
-                        &self.recursion_program,
-                        self.compress_machine.config().perm.clone(),
-                    );
-
-                    let mut witness_stream = Vec::new();
-                    witness_stream.extend(input.write());
-
-                    runtime.witness_stream = witness_stream.into();
-                    runtime.run();
-                    runtime.print_stats();
-
-                    let pk = &self.rec_pk;
-                    let mut recursive_challenger = self.compress_machine.config().challenger();
-                    (
-                        self.compress_machine.prove::<LocalProver<_, _>>(
-                            pk,
-                            runtime.record,
-                            &mut recursive_challenger,
-                            opts,
-                        ),
-                        ReduceProgramType::Core,
-                    )
+                    let proof =
+                        self.compress_machine_proof(input, &self.recursion_program, &self.rec_pk);
+                    (proof, ReduceProgramType::Core)
                 })
                 .collect::<Vec<_>>();
-            first_layer_proofs.extend(proofs);
+            reduce_proofs.extend(proofs);
         }
 
         // Run the deferred proofs programs.
@@ -434,39 +435,16 @@ impl SP1Prover {
             let proofs = inputs
                 .into_par_iter()
                 .map(|input| {
-                    let mut runtime = RecursionRuntime::<Val<InnerSC>, Challenge<InnerSC>, _>::new(
+                    let proof = self.compress_machine_proof(
+                        input,
                         &self.deferred_program,
-                        self.compress_machine.config().perm.clone(),
+                        &self.deferred_pk,
                     );
-
-                    let mut witness_stream = Vec::new();
-                    witness_stream.extend(input.write());
-
-                    runtime.witness_stream = witness_stream.into();
-                    runtime.run();
-                    runtime.print_stats();
-
-                    let pk = &self.deferred_pk;
-                    let mut recursive_challenger = self.compress_machine.config().challenger();
-                    (
-                        self.compress_machine.prove::<LocalProver<_, _>>(
-                            pk,
-                            runtime.record,
-                            &mut recursive_challenger,
-                            opts,
-                        ),
-                        ReduceProgramType::Deferred,
-                    )
+                    (proof, ReduceProgramType::Deferred)
                 })
                 .collect::<Vec<_>>();
-            first_layer_proofs.extend(proofs);
+            reduce_proofs.extend(proofs);
         }
-
-        // Chain all the individual shard proofs.
-        let mut reduce_proofs = first_layer_proofs
-            .into_iter()
-            .flat_map(|(proof, kind)| proof.shard_proofs.into_iter().map(move |p| (p, kind)))
-            .collect::<Vec<_>>();
 
         // Iterate over the recursive proof batches until there is one proof remaining.
         let mut is_complete;
@@ -492,6 +470,7 @@ impl SP1Prover {
                                 shard_proofs,
                                 kinds,
                                 is_complete,
+                                total_core_shards,
                             };
 
                             let proof = self.compress_machine_proof(
@@ -535,7 +514,7 @@ impl SP1Prover {
         runtime.run();
         runtime.print_stats();
 
-        let opts = SP1CoreOpts::recursion();
+        let opts = self.recursion_opts;
         let mut recursive_challenger = self.compress_machine.config().challenger();
         self.compress_machine
             .prove::<LocalProver<_, _>>(pk, runtime.record, &mut recursive_challenger, opts)
@@ -572,7 +551,7 @@ impl SP1Prover {
         tracing::debug!("Compress program executed successfully");
 
         // Prove the compress program.
-        let opts = SP1CoreOpts::recursion();
+        let opts = self.recursion_opts;
         let mut compress_challenger = self.shrink_machine.config().challenger();
         let mut compress_proof = self.shrink_machine.prove::<LocalProver<_, _>>(
             &self.shrink_pk,
@@ -613,7 +592,7 @@ impl SP1Prover {
         tracing::debug!("Wrap program executed successfully");
 
         // Prove the wrap program.
-        let opts = SP1CoreOpts::recursion();
+        let opts = self.recursion_opts;
         let mut wrap_challenger = self.wrap_machine.config().challenger();
         let time = std::time::Instant::now();
         let mut wrap_proof = self.wrap_machine.prove::<LocalProver<_, _>>(
@@ -696,10 +675,10 @@ mod tests {
     use std::fs::File;
     use std::io::{Read, Write};
 
-    use self::build::try_build_plonk_bn254_artifacts_dev;
     use super::*;
 
     use anyhow::Result;
+    use build::try_build_plonk_bn254_artifacts_dev;
     use p3_field::PrimeField32;
     use serial_test::serial;
     use sp1_core::io::SP1Stdin;
@@ -718,7 +697,8 @@ mod tests {
         let elf = include_bytes!("../../tests/fibonacci/elf/riscv32im-succinct-zkvm-elf");
 
         tracing::info!("initializing prover");
-        let prover = SP1Prover::new();
+        let mut prover = SP1Prover::new();
+        prover.core_opts.shard_size = 1 << 12;
 
         tracing::info!("setup elf");
         let (pk, vk) = prover.setup(elf);
@@ -748,11 +728,11 @@ mod tests {
         let bytes = bincode::serialize(&wrapped_bn254_proof).unwrap();
 
         // Save the proof.
-        let mut file = File::create("proof-with-pis.json").unwrap();
+        let mut file = File::create("proof-with-pis.bin").unwrap();
         file.write_all(bytes.as_slice()).unwrap();
 
         // Load the proof.
-        let mut file = File::open("proof-with-pis.json").unwrap();
+        let mut file = File::open("proof-with-pis.bin").unwrap();
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes).unwrap();
 

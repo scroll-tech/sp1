@@ -6,7 +6,6 @@ use strum_macros::EnumIter;
 use typenum::{U16, U32, U64, U8};
 
 use crate::runtime::{Register, Runtime};
-use crate::stark::Blake3CompressInnerChip;
 use crate::syscall::precompiles::bn254_scalar::{Bn254ScalarMacChip, Bn254ScalarMulChip};
 use crate::syscall::precompiles::edwards::EdAddAssignChip;
 use crate::syscall::precompiles::edwards::EdDecompressChip;
@@ -71,9 +70,6 @@ pub enum SyscallCode {
     /// Executes the `SECP256K1_DECOMPRESS` precompile.
     SECP256K1_DECOMPRESS = 0x00_00_01_0C,
 
-    /// Executes the `BLAKE3_COMPRESS_INNER` precompile.
-    BLAKE3_COMPRESS_INNER = 0x00_38_01_0D,
-
     /// Executes the `BN254_ADD` precompile.
     BN254_ADD = 0x00_01_01_0E,
 
@@ -136,7 +132,6 @@ impl SyscallCode {
             0x00_01_01_0A => SyscallCode::SECP256K1_ADD,
             0x00_00_01_0B => SyscallCode::SECP256K1_DOUBLE,
             0x00_00_01_0C => SyscallCode::SECP256K1_DECOMPRESS,
-            0x00_38_01_0D => SyscallCode::BLAKE3_COMPRESS_INNER,
             0x00_01_01_0E => SyscallCode::BN254_ADD,
             0x00_00_01_0F => SyscallCode::BN254_DOUBLE,
             0x00_01_01_1E => SyscallCode::BLS12381_ADD,
@@ -191,18 +186,19 @@ pub trait Syscall: Send + Sync {
 }
 
 /// A runtime for syscalls that is protected so that developers cannot arbitrarily modify the runtime.
-pub struct SyscallContext<'a> {
+pub struct SyscallContext<'a, 'b: 'a> {
     current_shard: u32,
     pub clk: u32,
 
     pub(crate) next_pc: u32,
     /// This is the exit_code used for the HALT syscall
     pub(crate) exit_code: u32,
-    pub(crate) rt: &'a mut Runtime,
+    pub(crate) rt: &'a mut Runtime<'b>,
+    pub syscall_lookup_id: usize,
 }
 
-impl<'a> SyscallContext<'a> {
-    pub fn new(runtime: &'a mut Runtime) -> Self {
+impl<'a, 'b> SyscallContext<'a, 'b> {
+    pub fn new(runtime: &'a mut Runtime<'b>) -> Self {
         let current_shard = runtime.shard();
         let clk = runtime.state.clk;
         Self {
@@ -211,6 +207,7 @@ impl<'a> SyscallContext<'a> {
             next_pc: runtime.state.pc.wrapping_add(4),
             exit_code: 0,
             rt: runtime,
+            syscall_lookup_id: 0,
         }
     }
 
@@ -324,20 +321,12 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
         Arc::new(WeierstrassDoubleAssignChip::<Bn254>::new()),
     );
     syscall_map.insert(
-        SyscallCode::BLAKE3_COMPRESS_INNER,
-        Arc::new(Blake3CompressInnerChip::new()),
-    );
-    syscall_map.insert(
         SyscallCode::BLS12381_ADD,
         Arc::new(WeierstrassAddAssignChip::<Bls12381>::new()),
     );
     syscall_map.insert(
         SyscallCode::BLS12381_DOUBLE,
         Arc::new(WeierstrassDoubleAssignChip::<Bls12381>::new()),
-    );
-    syscall_map.insert(
-        SyscallCode::BLAKE3_COMPRESS_INNER,
-        Arc::new(Blake3CompressInnerChip::new()),
     );
     syscall_map.insert(SyscallCode::UINT256_MUL, Arc::new(Uint256MulChip::new()));
     syscall_map.insert(
@@ -395,10 +384,6 @@ mod tests {
     fn test_syscalls_in_default_map() {
         let default_syscall_map = default_syscall_map();
         for code in SyscallCode::iter() {
-            if code == SyscallCode::BLAKE3_COMPRESS_INNER {
-                // Blake3 is currently disabled.
-                continue;
-            }
             default_syscall_map.get(&code).unwrap();
         }
     }
@@ -447,9 +432,6 @@ mod tests {
                 }
                 SyscallCode::SECP256K1_DOUBLE => {
                     assert_eq!(code as u32, sp1_zkvm::syscalls::SECP256K1_DOUBLE)
-                }
-                SyscallCode::BLAKE3_COMPRESS_INNER => {
-                    assert_eq!(code as u32, sp1_zkvm::syscalls::BLAKE3_COMPRESS_INNER)
                 }
                 SyscallCode::BLS12381_ADD => {
                     assert_eq!(code as u32, sp1_zkvm::syscalls::BLS12381_ADD)

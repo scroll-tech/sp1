@@ -42,6 +42,7 @@ pub struct SP1RecursionMemoryLayout<'a, SC: StarkGenericConfig, A: MachineAir<SC
     pub leaf_challenger: &'a SC::Challenger,
     pub initial_reconstruct_challenger: SC::Challenger,
     pub is_complete: bool,
+    pub total_core_shards: usize,
 }
 
 #[derive(DslVariable, Clone)]
@@ -54,6 +55,8 @@ pub struct SP1RecursionMemoryLayoutVariable<C: Config> {
     pub initial_reconstruct_challenger: DuplexChallengerVariable<C>,
 
     pub is_complete: Var<C::N>,
+
+    pub total_core_shards: Var<C::N>,
 }
 
 impl SP1RecursiveVerifier<InnerConfig, BabyBearPoseidon2> {
@@ -131,6 +134,7 @@ where
             leaf_challenger,
             initial_reconstruct_challenger,
             is_complete,
+            total_core_shards,
         } = input;
 
         // Initialize values we will commit to public outputs.
@@ -160,6 +164,11 @@ where
         let cumulative_sum: Ext<_, _> = builder.eval(C::EF::zero().cons());
         let current_pc: Felt<_> = builder.uninit();
         let exit_code: Felt<_> = builder.uninit();
+
+        // Range check that the number of proofs is sufficiently small.
+        let num_shard_proofs: Var<_> = shard_proofs.len().materialize(builder);
+        builder.range_check_v(num_shard_proofs, 16);
+
         // Verify proofs, validate transitions, and update accumulation variables.
         builder.range(0, shard_proofs.len()).for_each(|i, builder| {
             // Load the proof.
@@ -174,6 +183,7 @@ where
                 machine,
                 &mut challenger,
                 &proof,
+                total_core_shards,
             );
 
             // Extract public values.
@@ -218,10 +228,10 @@ where
                 builder.assign(exit_code, public_values.exit_code);
             });
 
-            // If the shard is zero, verify the global initial conditions hold on challenger and pc.
+            // If it's first shard, verify the global initial conditions hold on challenger and pc.
             let shard = felt2var(builder, public_values.shard);
             builder.if_eq(shard, C::N::one()).then(|builder| {
-                // This should be the first proof as well
+                // This should be the 0th proof in this batch.
                 builder.assert_var_eq(i, C::N::zero());
 
                 // Start pc should be vk.pc_start
@@ -262,6 +272,9 @@ where
 
             // Assert that exit code is the same for all proofs.
             builder.assert_felt_eq(exit_code, public_values.exit_code);
+
+            // Assert that the exit code is zero (success) for all proofs.
+            builder.assert_felt_eq(exit_code, C::F::zero());
 
             // Assert that the deferred proof digest is the same for all proofs.
             for (digest, current_digest) in deferred_proofs_digest
@@ -325,6 +338,7 @@ where
         let end_deferred_digest = [zero; POSEIDON_NUM_WORDS];
 
         let is_complete_felt = var2felt(builder, is_complete);
+        let total_core_shards_felt = var2felt(builder, total_core_shards);
 
         recursion_public_values.committed_value_digest = committed_value_digest;
         recursion_public_values.deferred_proofs_digest = deferred_proofs_digest;
@@ -340,6 +354,7 @@ where
         recursion_public_values.start_reconstruct_deferred_digest = start_deferred_digest;
         recursion_public_values.end_reconstruct_deferred_digest = end_deferred_digest;
         recursion_public_values.is_complete = is_complete_felt;
+        recursion_public_values.total_core_shards = total_core_shards_felt;
 
         // If the proof represents a complete proof, make completeness assertions.
         //
