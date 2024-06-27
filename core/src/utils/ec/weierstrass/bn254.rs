@@ -44,6 +44,32 @@ impl NumLimbs for Bn254BaseField {
     type Witness = U62;
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Bn254ScalarField;
+
+impl FieldParameters for Bn254ScalarField {
+    const MODULUS: &'static [u8] = &[
+        1, 0, 0, 240, 147, 245, 225, 67, 145, 112, 185, 121, 72, 232, 51, 40, 93, 88, 129, 129,
+        182, 69, 80, 184, 41, 160, 49, 225, 114, 78, 100, 48,
+    ];
+
+    // TODO: check this constant
+    const WITNESS_OFFSET: usize = 1usize << 13;
+
+    fn modulus() -> BigUint {
+        BigUint::from_str_radix(
+            "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+            10,
+        )
+        .unwrap()
+    }
+}
+
+impl NumLimbs for Bn254ScalarField {
+    type Limbs = U32;
+    type Witness = U62;
+}
+
 impl EllipticCurveParameters for Bn254Parameters {
     type BaseField = Bn254BaseField;
 

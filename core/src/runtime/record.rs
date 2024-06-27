@@ -17,12 +17,14 @@ use crate::cpu::CpuEvent;
 use crate::runtime::MemoryInitializeFinalizeEvent;
 use crate::runtime::MemoryRecordEnum;
 use crate::stark::MachineRecord;
+use crate::syscall::precompiles::bn254_scalar::Bn254FieldArithEvent;
 use crate::syscall::precompiles::edwards::EdDecompressEvent;
 use crate::syscall::precompiles::keccak256::KeccakPermuteEvent;
 use crate::syscall::precompiles::sha256::{ShaCompressEvent, ShaExtendEvent};
 use crate::syscall::precompiles::uint256::Uint256MulEvent;
 use crate::syscall::precompiles::ECDecompressEvent;
 use crate::syscall::precompiles::{ECAddEvent, ECDoubleEvent};
+use crate::syscall::MemCopyEvent;
 use crate::utils::SP1CoreOpts;
 
 /// A record of the execution of a program. Contains event data for everything that happened during
@@ -84,6 +86,8 @@ pub struct ExecutionRecord {
 
     pub bn254_double_events: Vec<ECDoubleEvent>,
 
+    pub bn254_scalar_arith_events: Vec<Bn254FieldArithEvent>,
+
     pub k256_decompress_events: Vec<ECDecompressEvent>,
 
     pub bls12381_add_events: Vec<ECAddEvent>,
@@ -97,6 +101,8 @@ pub struct ExecutionRecord {
     pub memory_finalize_events: Vec<MemoryInitializeFinalizeEvent>,
 
     pub bls12381_decompress_events: Vec<ECDecompressEvent>,
+
+    pub memcpy_events: HashMap<usize, Vec<MemCopyEvent>>,
 
     /// The public values.
     pub public_values: PublicValues<u32, u32>,
@@ -123,6 +129,8 @@ pub struct ShardingConfig {
     pub bls12381_add_len: usize,
     pub bls12381_double_len: usize,
     pub uint256_mul_len: usize,
+    pub bn254_scalar_arith_len: usize,
+    pub memcpy_len: usize,
 }
 
 impl ShardingConfig {
@@ -153,6 +161,8 @@ impl Default for ShardingConfig {
             bls12381_add_len: shard_size,
             bls12381_double_len: shard_size,
             uint256_mul_len: shard_size,
+            bn254_scalar_arith_len: shard_size,
+            memcpy_len: shard_size,
         }
     }
 }
@@ -236,6 +246,16 @@ impl MachineRecord for ExecutionRecord {
             "bls12381_decompress_events".to_string(),
             self.bls12381_decompress_events.len(),
         );
+
+        stats.insert(
+            "bn254_scalar_arith_events".to_string(),
+            self.bn254_scalar_arith_events.len(),
+        );
+
+        for (sz, events) in self.memcpy_events.iter() {
+            stats.insert(format!("memcpy{}_events", sz), events.len());
+        }
+
         stats
     }
 
@@ -275,6 +295,8 @@ impl MachineRecord for ExecutionRecord {
             .append(&mut other.uint256_mul_events);
         self.bls12381_decompress_events
             .append(&mut other.bls12381_decompress_events);
+        self.bn254_scalar_arith_events
+            .append(&mut other.bn254_scalar_arith_events);
 
         // Merge the byte lookups.
         for (shard, events_map) in std::mem::take(&mut other.byte_lookups).into_iter() {
@@ -525,6 +547,28 @@ impl MachineRecord for ExecutionRecord {
             for (i, event) in bls12381_double_chunk.iter().enumerate() {
                 self.nonce_lookup.insert(event.lookup_id, i as u32);
             }
+        }
+
+        for (sz, events) in self.memcpy_events.iter_mut() {
+            for (memcpy_chunk, shard) in take(events)
+                .chunks_mut(config.memcpy_len)
+                .zip(shards.iter_mut())
+            {
+                if let Some(events) = shard.memcpy_events.get_mut(sz) {
+                    events.extend_from_slice(memcpy_chunk);
+                } else {
+                    shard.memcpy_events.insert(*sz, memcpy_chunk.to_vec());
+                }
+            }
+        }
+
+        for (bn254_scalar_arith_chunk, shard) in take(&mut self.bn254_scalar_arith_events)
+            .chunks_mut(config.bn254_scalar_arith_len)
+            .zip(shards.iter_mut())
+        {
+            shard
+                .bn254_scalar_arith_events
+                .extend_from_slice(bn254_scalar_arith_chunk);
         }
 
         // Put the precompile events in the first shard.
