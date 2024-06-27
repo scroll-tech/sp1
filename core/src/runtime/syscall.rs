@@ -467,6 +467,8 @@ mod tests {
                 SyscallCode::BN254_SCALAR_MAC => {
                     assert_eq!(code as u32, sp1_zkvm::syscalls::BN254_SCALAR_MAC)
                 }
+                SyscallCode::MEMCPY_32 => todo!(),
+                SyscallCode::MEMCPY_64 => todo!(),
             }
         }
     }

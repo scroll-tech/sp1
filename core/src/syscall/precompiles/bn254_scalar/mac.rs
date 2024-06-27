@@ -287,6 +287,7 @@ where
             row.shard,
             row.channel,
             row.clk,
+            AB::F::from_canonical_u32(0u32),
             syscall_id,
             row.arg1_ptr,
             row.arg2_ptr,

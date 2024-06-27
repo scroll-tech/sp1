@@ -204,6 +204,7 @@ impl<AB: SP1AirBuilder, NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sy
             row.shard,
             row.channel,
             row.clk,
+            AB::F::from_canonical_u32(0u32),
             AB::F::from_canonical_u32(Self::syscall_id()),
             row.src_ptr,
             row.dst_ptr,
