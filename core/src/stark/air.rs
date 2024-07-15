@@ -104,10 +104,12 @@ pub enum RiscvAir<F: PrimeField32> {
 impl<F: PrimeField32> RiscvAir<F> {
     #[instrument("construct RiscvAir machine", level = "debug", skip_all)]
     pub fn machine<SC: StarkGenericConfig<Val = F>>(config: SC) -> StarkMachine<SC, Self> {
+        log::info!("======   core vm chips   =======");
         let chips = Self::get_all()
             .into_iter()
             .map(Chip::new)
             .collect::<Vec<_>>();
+        log::info!("================================");
         StarkMachine::new(config, chips, SP1_PROOF_NUM_PV_ELTS)
     }
 

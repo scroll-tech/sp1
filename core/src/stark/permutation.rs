@@ -212,11 +212,19 @@ pub fn eval_permutation_constraints<F, AB>(
         permutation_trace_width(sends.len() + receives.len(), batch_size)
     );
 
+    // log::info!(
+    //     "number of sends: {}, receives: {}, batch size: {}, perm width: {}",
+    //     sends.len(),
+    //     receives.len(),
+    //     batch_size,
+    //     perm_width - 1
+    // );
+
     for (entry, chunk) in perm_local[0..perm_local.len() - 1]
         .iter()
         .zip(interaction_chunks)
     {
-        // Assert that the i-eth entry is equal to the sum_i m_i/rlc_i by constraints:
+        // Assert that the i-th entry is equal to the sum_i m_i/rlc_i by constraints:
         // entry * \prod_i rlc_i = \sum_i m_i * \prod_{j!=i} rlc_j.
 
         // First, we calculate the random linear combinations and multiplicities with the correct

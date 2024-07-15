@@ -19,7 +19,7 @@ use super::{
 /// An Air that encodes lookups based on interactions.
 pub struct Chip<F: Field, A> {
     /// The underlying AIR of the chip for constraint evaluation.
-    air: A,
+    pub air: A,
     /// The interactions that the chip sends.
     sends: Vec<Interaction<F>>,
     /// The interactions that the chip receives.
@@ -82,9 +82,21 @@ where
         let mut max_constraint_degree =
             get_max_constraint_degree(&air, air.preprocessed_width(), PROOF_MAX_NUM_PVS);
 
+        log::info!(
+            "chip {}: width = {}, preprocessed_width = {}, max_degree: {}, sends = {}, receives = {}, byte interactions = {}",
+            air.name(),
+            air.width(),
+            air.preprocessed_width(),
+            max_constraint_degree,
+            sends.len(),
+            receives.len(),
+            nb_byte_sends + nb_byte_receives,
+        );
+
         if !sends.is_empty() || !receives.is_empty() {
             max_constraint_degree = max_constraint_degree.max(3);
         }
+
         let log_quotient_degree = log2_ceil_usize(max_constraint_degree - 1);
 
         Self {
