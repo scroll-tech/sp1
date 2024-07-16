@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::cmp::Reverse;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Instant;
 
 use itertools::Itertools;
 use p3_air::Air;
@@ -167,6 +168,7 @@ where
         let shard_chips = machine.shard_chips(shard).collect::<Vec<_>>();
 
         // For each chip, generate the trace.
+        let gen_traces_dur = Instant::now();
         let parent_span = tracing::debug_span!("generate traces for shard");
         let mut named_traces = parent_span.in_scope(|| {
             shard_chips
@@ -184,6 +186,11 @@ where
                 })
                 .collect::<Vec<_>>()
         });
+        log::info!(
+            "generate traces for {} chips took {:?}",
+            shard_chips.len(),
+            gen_traces_dur.elapsed()
+        );
 
         // Order the chips and traces by trace size (biggest first), and get the ordering map.
         named_traces.sort_by_key(|(_, trace)| Reverse(trace.height()));
@@ -198,8 +205,13 @@ where
             })
             .collect::<Vec<_>>();
 
+        let lde_and_commit_dur = Instant::now();
         // Commit to the batch of traces.
         let (main_commit, main_data) = pcs.commit(domains_and_traces);
+        log::info!(
+            "LDE and Commit to traces took {:?}",
+            lde_and_commit_dur.elapsed()
+        );
 
         // Get the chip ordering.
         let chip_ordering = named_traces
@@ -257,6 +269,16 @@ where
             .map(|chip| chip.log_quotient_degree())
             .collect::<Vec<_>>();
 
+        for (chip, main_trace) in chips.iter().zip(traces.iter()) {
+            log::info!(
+                "chip {}: width = {}, prep_width = {}, height = {}",
+                chip.name(),
+                chip.air.width(),
+                chip.air.preprocessed_width(),
+                main_trace.height(),
+            );
+        }
+
         let pcs = config.pcs();
         let trace_domains = degrees
             .iter()
@@ -276,6 +298,7 @@ where
         // Generate the permutation traces.
         let mut permutation_traces = Vec::with_capacity(chips.len());
         let mut cumulative_sums = Vec::with_capacity(chips.len());
+        let generate_multiset_equality_dur = Instant::now();
         tracing::debug_span!("generate permutation traces").in_scope(|| {
             chips
                 .par_iter()
@@ -285,10 +308,17 @@ where
                         .chip_ordering
                         .get(&chip.name())
                         .map(|&index| &pk.traces[index]);
+                    let dur = Instant::now();
                     let perm_trace = chip.generate_permutation_trace(
                         preprocessed_trace,
                         main_trace,
                         &permutation_challenges,
+                    );
+                    log::info!(
+                        "chip {} generate set-equality trace: width={}, time={:?}",
+                        chip.name(),
+                        perm_trace.width(),
+                        dur.elapsed()
                     );
                     let cumulative_sum = perm_trace
                         .row_slice(main_trace.height() - 1)
@@ -300,13 +330,19 @@ where
                 .unzip_into_vecs(&mut permutation_traces, &mut cumulative_sums);
         });
 
+        log::info!(
+            "generate multiset equality set traces for {} chips took {:?}",
+            chips.len(),
+            generate_multiset_equality_dur.elapsed()
+        );
+
         // Compute some statistics.
         for i in 0..chips.len() {
             let trace_width = traces[i].width();
             let permutation_width = permutation_traces[i].width();
             let total_width = trace_width
                 + permutation_width * <SC::Challenge as AbstractExtensionField<SC::Val>>::D;
-            tracing::debug!(
+            tracing::info!(
                 "{:<15} | Main Cols = {:<5} | Perm Cols = {:<5} | Rows = {:<5} | Cells = {:<10}",
                 chips[i].name(),
                 trace_width,
@@ -316,6 +352,7 @@ where
             );
         }
 
+        let ext_matrix_to_base_matrix_dur = Instant::now();
         let domains_and_perm_traces =
             tracing::debug_span!("flatten permutation traces and collect domains").in_scope(|| {
                 permutation_traces
@@ -327,12 +364,21 @@ where
                     })
                     .collect::<Vec<_>>()
             });
+        log::info!(
+            "ext matrix to base matrix took {:?}",
+            ext_matrix_to_base_matrix_dur.elapsed()
+        );
 
         let pcs = config.pcs();
 
+        let commit_perm_dur = Instant::now();
         let (permutation_commit, permutation_data) =
             tracing::debug_span!("commit to permutation traces")
                 .in_scope(|| pcs.commit(domains_and_perm_traces));
+        log::info!(
+            "commit multiset equality traces took {:?}",
+            commit_perm_dur.elapsed()
+        );
         challenger.observe(permutation_commit.clone());
 
         // Compute the quotient polynomial for all chips.
@@ -347,6 +393,7 @@ where
             .collect::<Vec<_>>();
 
         // Compute the quotient values.
+        let quotient_dur = Instant::now();
         let alpha: SC::Challenge = challenger.sample_ext_element::<SC::Challenge>();
         let parent_span = tracing::debug_span!("compute quotient values");
         let quotient_values = parent_span.in_scope(|| {
@@ -379,7 +426,9 @@ where
                             let permutation_trace_on_quotient_domains = pcs
                                 .get_evaluations_on_domain(&permutation_data, i, *quotient_domain)
                                 .to_row_major_matrix();
-                            quotient_values(
+
+                            let qv_dur = Instant::now();
+                            let qv = quotient_values(
                                 chips[i],
                                 cumulative_sums[i],
                                 trace_domains[i],
@@ -390,12 +439,25 @@ where
                                 &packed_perm_challenges,
                                 alpha,
                                 &shard_data.public_values,
-                            )
+                            );
+                            log::info!(
+                                "quotient values for chip {:?} took {:?}",
+                                chips[i].name(),
+                                qv_dur.elapsed()
+                            );
+
+                            qv
                         })
                 })
                 .collect::<Vec<_>>()
         });
+        log::info!(
+            "compute quotient values for {} chips took {:?}",
+            chips.len(),
+            quotient_dur.elapsed()
+        );
 
+        let commit_quotient_dur = Instant::now();
         // Split the quotient values and commit to them.
         let quotient_domains_and_chunks = quotient_domains
             .into_iter()
@@ -425,6 +487,10 @@ where
         let (quotient_commit, quotient_data) = tracing::debug_span!("commit to quotient traces")
             .in_scope(|| pcs.commit(quotient_domains_and_chunks));
         challenger.observe(quotient_commit.clone());
+        log::info!(
+            "commit to quotient took {:?}",
+            commit_quotient_dur.elapsed()
+        );
 
         // Compute the quotient argument.
         let zeta: SC::Challenge = challenger.sample_ext_element();
@@ -453,6 +519,7 @@ where
             .map(|_| vec![zeta])
             .collect::<Vec<_>>();
 
+        let opening_dur = Instant::now();
         let (openings, opening_proof) = tracing::debug_span!("open multi batches").in_scope(|| {
             pcs.open(
                 vec![
@@ -464,6 +531,7 @@ where
                 challenger,
             )
         });
+        log::info!("opening took {:?}", opening_dur.elapsed());
 
         // Collect the opened values for each chip.
         let [preprocessed_values, main_values, permutation_values, mut quotient_values] =

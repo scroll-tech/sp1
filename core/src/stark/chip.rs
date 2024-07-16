@@ -3,7 +3,7 @@ use std::hash::Hash;
 use p3_air::{Air, BaseAir, PairBuilder};
 use p3_field::{ExtensionField, Field, PrimeField, PrimeField32};
 use p3_matrix::dense::RowMajorMatrix;
-use p3_uni_stark::{get_max_constraint_degree, SymbolicAirBuilder};
+use p3_uni_stark::{get_max_constraint_degree, get_symbolic_constraints, SymbolicAirBuilder};
 use p3_util::log2_ceil_usize;
 
 use crate::{
@@ -81,13 +81,16 @@ where
 
         let mut max_constraint_degree =
             get_max_constraint_degree(&air, air.preprocessed_width(), PROOF_MAX_NUM_PVS);
+        let num_consts =
+            get_symbolic_constraints(&air, air.preprocessed_width(), PROOF_MAX_NUM_PVS).len();
 
         log::info!(
-            "chip {}: width = {}, preprocessed_width = {}, max_degree: {}, sends = {}, receives = {}, byte interactions = {}",
+            "chip {}: width={}, preprocessed_width={}, max_degree={}, num_consts={}, sends={}, receives={}, byte interactions={}",
             air.name(),
             air.width(),
             air.preprocessed_width(),
             max_constraint_degree,
+            num_consts,
             sends.len(),
             receives.len(),
             nb_byte_sends + nb_byte_receives,

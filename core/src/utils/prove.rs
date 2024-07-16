@@ -134,6 +134,8 @@ where
     let machine = RiscvAir::machine(config);
     let (pk, vk) = machine.setup(runtime.program.as_ref());
 
+    log::info!("shard_batch_size: {}", opts.shard_batch_size);
+    log::info!("shard_size: {}", opts.shard_size);
     // If we don't need to batch, we can just run the program normally and prove it.
     if opts.shard_batch_size == 0 {
         // Execute the runtime and collect all the events..
