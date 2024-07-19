@@ -25,7 +25,15 @@ impl Syscall for SyscallWrite {
         let slice = bytes.as_slice();
         if fd == 1 {
             let s = core::str::from_utf8(slice).unwrap();
-            if s.contains("cycle-tracker-start:") {
+            if s.contains("cycle-tracker-current:") {
+                let fn_name = s
+                    .split("cycle-tracker-current:")
+                    .last()
+                    .unwrap()
+                    .trim_end()
+                    .trim_start();
+                log::info!("current cycles on {fn_name} = {}", rt.state.global_clk);
+            } else if s.contains("cycle-tracker-start:") {
                 let fn_name = s
                     .split("cycle-tracker-start:")
                     .last()
