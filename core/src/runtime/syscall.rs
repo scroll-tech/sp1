@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 use typenum::{U16, U32, U64, U8};
 
@@ -31,7 +32,9 @@ use crate::{runtime::ExecutionRecord, runtime::MemoryReadRecord, runtime::Memory
 /// - The second byte is 0/1 depending on whether the syscall has a separate table. This is used
 /// in the CPU table to determine whether to lookup the syscall using the syscall interaction.
 /// - The third byte is the number of additional cycles the syscall uses.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, EnumIter, Ord, PartialOrd)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, Hash, EnumIter, Ord, PartialOrd, Serialize, Deserialize,
+)]
 #[allow(non_camel_case_types)]
 pub enum SyscallCode {
     /// Halts the program.
@@ -95,7 +98,7 @@ pub enum SyscallCode {
     HINT_READ = 0x00_00_00_F1,
 
     /// Executes the `UINT256_MUL` precompile.
-    UINT256_MUL = 0x00_00_01_1D,
+    UINT256_MUL = 0x00_01_01_1D,
 
     /// Executes the `BLS12381_ADD` precompile.
     BLS12381_ADD = 0x00_01_01_1E,
@@ -141,7 +144,7 @@ impl SyscallCode {
             0x00_00_00_1B => SyscallCode::VERIFY_SP1_PROOF,
             0x00_00_00_F0 => SyscallCode::HINT_LEN,
             0x00_00_00_F1 => SyscallCode::HINT_READ,
-            0x00_00_01_1D => SyscallCode::UINT256_MUL,
+            0x00_01_01_1D => SyscallCode::UINT256_MUL,
             0x00_00_01_1C => SyscallCode::BLS12381_DECOMPRESS,
             0x00_01_01_20 => SyscallCode::BN254_SCALAR_MUL,
             0x00_01_01_21 => SyscallCode::BN254_SCALAR_MAC,
@@ -194,7 +197,7 @@ pub struct SyscallContext<'a, 'b: 'a> {
     /// This is the exit_code used for the HALT syscall
     pub(crate) exit_code: u32,
     pub(crate) rt: &'a mut Runtime<'b>,
-    pub syscall_lookup_id: usize,
+    pub syscall_lookup_id: u128,
 }
 
 impl<'a, 'b> SyscallContext<'a, 'b> {
@@ -310,7 +313,7 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
     );
     syscall_map.insert(
         SyscallCode::SECP256K1_DECOMPRESS,
-        Arc::new(WeierstrassDecompressChip::<Secp256k1>::new()),
+        Arc::new(WeierstrassDecompressChip::<Secp256k1>::with_lsb_rule()),
     );
     syscall_map.insert(
         SyscallCode::BN254_ADD,
@@ -351,7 +354,7 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
     syscall_map.insert(SyscallCode::HINT_READ, Arc::new(SyscallHintRead::new()));
     syscall_map.insert(
         SyscallCode::BLS12381_DECOMPRESS,
-        Arc::new(WeierstrassDecompressChip::<Bls12381>::new()),
+        Arc::new(WeierstrassDecompressChip::<Bls12381>::with_lexicographic_rule()),
     );
     syscall_map.insert(SyscallCode::UINT256_MUL, Arc::new(Uint256MulChip::new()));
     syscall_map.insert(
