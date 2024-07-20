@@ -92,9 +92,9 @@ impl<NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength + Send + Sync> S
             write_records: write,
         };
         (match NumWords::USIZE {
-            32 => &mut ctx.record_mut().memcpy32_events,
-            64 => &mut ctx.record_mut().memcpy64_events,
-            _ => unreachable!(),
+            8 => &mut ctx.record_mut().memcpy32_events,
+            16 => &mut ctx.record_mut().memcpy64_events,
+            _ => panic!("invalid uszie {}", NumWords::USIZE),
         })
         .push(event);
 
@@ -117,8 +117,8 @@ impl<F: PrimeField32, NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength
         let mut rows = vec![];
         let mut new_byte_lookup_events = vec![];
         let events = match NumWords::USIZE {
-            32 => &input.memcpy32_events,
-            64 => &input.memcpy64_events,
+            8 => &input.memcpy32_events,
+            16 => &input.memcpy64_events,
             _ => unreachable!(),
         };
 
@@ -163,8 +163,8 @@ impl<F: PrimeField32, NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength
 
     fn included(&self, shard: &Self::Record) -> bool {
         !(match NumWords::USIZE {
-            32 => &shard.memcpy32_events,
-            64 => &shard.memcpy64_events,
+            8 => &shard.memcpy32_events,
+            16 => &shard.memcpy64_events,
             _ => unreachable!(),
         })
         .is_empty()
