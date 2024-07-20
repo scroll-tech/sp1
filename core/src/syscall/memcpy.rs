@@ -23,6 +23,7 @@ use crate::{
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MemCopyEvent {
+    pub lookup_id: u128,
     pub shard: u32,
     pub channel: u32,
     pub clk: u32,
@@ -81,6 +82,7 @@ impl<NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength + Send + Sync> S
         let write = ctx.mw_slice(dst, &read_bytes);
 
         let event = MemCopyEvent {
+            lookup_id: ctx.syscall_lookup_id,
             shard: ctx.current_shard(),
             channel: ctx.current_channel(),
             clk: ctx.clk,
@@ -89,18 +91,19 @@ impl<NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength + Send + Sync> S
             read_records: read,
             write_records: write,
         };
-        ctx.record_mut()
-            .memcpy_events
-            .entry(NumWords::USIZE)
-            .or_default()
-            .push(event);
+        (match NumWords::USIZE {
+            32 => &mut ctx.record_mut().memcpy32_events,
+            64 => &mut ctx.record_mut().memcpy64_events,
+            _ => unreachable!(),
+        })
+        .push(event);
 
         None
     }
 }
 
-impl<F: PrimeField32, NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sync> MachineAir<F>
-    for MemCopyChip<NumWords, NumBytes>
+impl<F: PrimeField32, NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength + Send + Sync>
+    MachineAir<F> for MemCopyChip<NumWords, NumBytes>
 {
     type Record = ExecutionRecord;
 
@@ -113,8 +116,13 @@ impl<F: PrimeField32, NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sync
     fn generate_trace(&self, input: &Self::Record, output: &mut Self::Record) -> RowMajorMatrix<F> {
         let mut rows = vec![];
         let mut new_byte_lookup_events = vec![];
+        let events = match NumWords::USIZE {
+            32 => &input.memcpy32_events,
+            64 => &input.memcpy64_events,
+            _ => unreachable!(),
+        };
 
-        for event in input.memcpy_events.get(&NumWords::USIZE).unwrap_or(&vec![]) {
+        for event in events {
             let mut row = Vec::with_capacity(Self::NUM_COLS);
             row.resize(Self::NUM_COLS, F::zero());
             let cols: &mut MemCopyCols<F, NumWords> = row.as_mut_slice().borrow_mut();
@@ -154,11 +162,12 @@ impl<F: PrimeField32, NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sync
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
-        shard
-            .memcpy_events
-            .get(&NumWords::USIZE)
-            .map(|events| !events.is_empty())
-            .unwrap_or(false)
+        !(match NumWords::USIZE {
+            32 => &shard.memcpy32_events,
+            64 => &shard.memcpy64_events,
+            _ => unreachable!(),
+        })
+        .is_empty()
     }
 }
 

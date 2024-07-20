@@ -102,15 +102,14 @@ pub struct ExecutionRecord {
 
     pub bls12381_decompress_events: Vec<ECDecompressEvent>,
 
-    pub memcpy_events: HashMap<usize, Vec<MemCopyEvent>>,
+    pub memcpy32_events: Vec<MemCopyEvent>,
+    pub memcpy64_events: Vec<MemCopyEvent>,
 
     /// The public values.
     pub public_values: PublicValues<u32, u32>,
 
     pub nonce_lookup: HashMap<u128, u32>,
 }
-    pub bn254_scalar_arith_len: usize,
-    pub memcpy_len: usize,
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SplitOpts {
@@ -129,8 +128,6 @@ impl SplitOpts {
             sha_extend_split_threshold: deferred_shift_threshold / 48,
             sha_compress_split_threshold: deferred_shift_threshold / 80,
             memory_split_threshold: deferred_shift_threshold,
-            bn254_scalar_arith_len: shard_size,
-            memcpy_len: shard_size,
         }
     }
 }
@@ -211,9 +208,8 @@ impl MachineRecord for ExecutionRecord {
             self.bn254_scalar_arith_events.len(),
         );
 
-        for (sz, events) in self.memcpy_events.iter() {
-            stats.insert(format!("memcpy{}_events", sz), events.len());
-        }
+        stats.insert("memcpy32_events".to_string(), self.memcpy32_events.len());
+        stats.insert("memcpy64_events".to_string(), self.memcpy64_events.len());
 
         stats.insert(
             "memory_initialize_events".to_string(),
@@ -273,6 +269,8 @@ impl MachineRecord for ExecutionRecord {
             .append(&mut other.bls12381_decompress_events);
         self.bn254_scalar_arith_events
             .append(&mut other.bn254_scalar_arith_events);
+        self.memcpy32_events.append(&mut other.memcpy32_events);
+        self.memcpy64_events.append(&mut other.memcpy64_events);
 
         if self.byte_lookups.is_empty() {
             self.byte_lookups = std::mem::take(&mut other.byte_lookups);
@@ -299,28 +297,27 @@ impl MachineRecord for ExecutionRecord {
         self.mul_events.iter().enumerate().for_each(|(i, event)| {
             self.nonce_lookup.insert(event.lookup_id, i as u32);
         });
-        }
 
-        for (sz, events) in self.memcpy_events.iter_mut() {
-            for (memcpy_chunk, shard) in take(events)
-                .chunks_mut(config.memcpy_len)
-                .zip(shards.iter_mut())
-            {
-                if let Some(events) = shard.memcpy_events.get_mut(sz) {
-                    events.extend_from_slice(memcpy_chunk);
-                } else {
-                    shard.memcpy_events.insert(*sz, memcpy_chunk.to_vec());
-                }
-            }
-        }
+        self.memcpy32_events
+            .iter()
+            .enumerate()
+            .for_each(|(i, event)| {
+                self.nonce_lookup.insert(event.lookup_id, i as u32);
+            });
 
-        for (bn254_scalar_arith_chunk, shard) in take(&mut self.bn254_scalar_arith_events)
-            .chunks_mut(config.bn254_scalar_arith_len)
-            .zip(shards.iter_mut())
-        {
-            shard
-                .bn254_scalar_arith_events
-                .extend_from_slice(bn254_scalar_arith_chunk);
+        self.memcpy64_events
+            .iter()
+            .enumerate()
+            .for_each(|(i, event)| {
+                self.nonce_lookup.insert(event.lookup_id, i as u32);
+            });
+
+        self.bn254_scalar_arith_events
+            .iter()
+            .enumerate()
+            .for_each(|(i, event)| {
+                self.nonce_lookup.insert(event.lookup_id, i as u32);
+            });
 
         self.bitwise_events
             .iter()
@@ -553,6 +550,27 @@ impl ExecutionRecord {
         split_events!(
             self,
             uint256_mul_events,
+            shards,
+            opts.deferred_shift_threshold,
+            last
+        );
+        split_events!(
+            self,
+            memcpy32_events,
+            shards,
+            opts.deferred_shift_threshold,
+            last
+        );
+        split_events!(
+            self,
+            memcpy64_events,
+            shards,
+            opts.deferred_shift_threshold,
+            last
+        );
+        split_events!(
+            self,
+            bn254_scalar_arith_events,
             shards,
             opts.deferred_shift_threshold,
             last
