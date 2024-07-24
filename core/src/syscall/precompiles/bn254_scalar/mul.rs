@@ -56,7 +56,7 @@ impl Syscall for Bn254ScalarMulChip {
         arg2: u32,
     ) -> Option<u32> {
         let event = create_bn254_scalar_arith_event(rt, arg1, arg2, OP);
-        rt.record_mut().bn254_scalar_arith_events.push(event);
+        rt.record_mut().bn254_scalar_mul_events.push(event);
 
         None
     }
@@ -79,11 +79,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
         let mut rows = vec![];
         let mut new_byte_lookup_events = vec![];
 
-        for event in input
-            .bn254_scalar_arith_events
-            .iter()
-            .filter(|e| e.op == OP)
-        {
+        for event in input.bn254_scalar_mul_events.iter().filter(|e| e.op == OP) {
             let mut row = [F::zero(); NUM_COLS];
             let cols: &mut Bn254ScalarMulCols<F> = row.as_mut_slice().borrow_mut();
 
@@ -150,7 +146,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
 
     fn included(&self, shard: &Self::Record) -> bool {
         shard
-            .bn254_scalar_arith_events
+            .bn254_scalar_mul_events
             .iter()
             .filter(|e| e.op == OP)
             .count()

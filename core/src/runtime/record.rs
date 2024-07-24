@@ -86,7 +86,8 @@ pub struct ExecutionRecord {
 
     pub bn254_double_events: Vec<ECDoubleEvent>,
 
-    pub bn254_scalar_arith_events: Vec<Bn254FieldArithEvent>,
+    pub bn254_scalar_mul_events: Vec<Bn254FieldArithEvent>,
+    pub bn254_scalar_mac_events: Vec<Bn254FieldArithEvent>,
 
     pub k256_decompress_events: Vec<ECDecompressEvent>,
 
@@ -204,8 +205,12 @@ impl MachineRecord for ExecutionRecord {
         );
 
         stats.insert(
-            "bn254_scalar_arith_events".to_string(),
-            self.bn254_scalar_arith_events.len(),
+            "bn254_scalar_mul_events".to_string(),
+            self.bn254_scalar_mul_events.len(),
+        );
+        stats.insert(
+            "bn254_scalar_mac_events".to_string(),
+            self.bn254_scalar_mac_events.len(),
         );
 
         stats.insert("memcpy32_events".to_string(), self.memcpy32_events.len());
@@ -267,8 +272,10 @@ impl MachineRecord for ExecutionRecord {
             .append(&mut other.uint256_mul_events);
         self.bls12381_decompress_events
             .append(&mut other.bls12381_decompress_events);
-        self.bn254_scalar_arith_events
-            .append(&mut other.bn254_scalar_arith_events);
+        self.bn254_scalar_mul_events
+            .append(&mut other.bn254_scalar_mul_events);
+        self.bn254_scalar_mac_events
+            .append(&mut other.bn254_scalar_mac_events);
         self.memcpy32_events.append(&mut other.memcpy32_events);
         self.memcpy64_events.append(&mut other.memcpy64_events);
 
@@ -312,7 +319,13 @@ impl MachineRecord for ExecutionRecord {
                 self.nonce_lookup.insert(event.lookup_id, i as u32);
             });
 
-        self.bn254_scalar_arith_events
+        self.bn254_scalar_mul_events
+            .iter()
+            .enumerate()
+            .for_each(|(i, event)| {
+                self.nonce_lookup.insert(event.lookup_id, i as u32);
+            });
+        self.bn254_scalar_mac_events
             .iter()
             .enumerate()
             .for_each(|(i, event)| {
@@ -416,7 +429,8 @@ impl ExecutionRecord {
             secp256k1_double_events: std::mem::take(&mut self.secp256k1_double_events),
             bn254_add_events: std::mem::take(&mut self.bn254_add_events),
             bn254_double_events: std::mem::take(&mut self.bn254_double_events),
-            bn254_scalar_arith_events: std::mem::take(&mut self.bn254_scalar_arith_events),
+            bn254_scalar_mul_events: std::mem::take(&mut self.bn254_scalar_mul_events),
+            bn254_scalar_mac_events: std::mem::take(&mut self.bn254_scalar_mac_events),
             memcpy32_events: std::mem::take(&mut self.memcpy32_events),
             memcpy64_events: std::mem::take(&mut self.memcpy64_events),
             bls12381_add_events: std::mem::take(&mut self.bls12381_add_events),
@@ -573,7 +587,14 @@ impl ExecutionRecord {
         );
         split_events!(
             self,
-            bn254_scalar_arith_events,
+            bn254_scalar_mul_events,
+            shards,
+            opts.deferred_shift_threshold,
+            last
+        );
+        split_events!(
+            self,
+            bn254_scalar_mac_events,
             shards,
             opts.deferred_shift_threshold,
             last
