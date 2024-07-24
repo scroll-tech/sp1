@@ -40,6 +40,7 @@ pub struct MemCopyCols<T, NumWords: ArrayLength> {
     shard: T,
     channel: T,
     clk: T,
+    nonce: T,
     src_ptr: T,
     dst_ptr: T,
     src_access: GenericArray<MemoryReadCols<T>, NumWords>,
@@ -155,10 +156,17 @@ impl<F: PrimeField32, NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength
 
         pad_rows(&mut rows, || vec![F::zero(); Self::NUM_COLS]);
 
-        RowMajorMatrix::new(
+        let mut trace = RowMajorMatrix::new(
             rows.into_iter().flatten().collect::<Vec<_>>(),
             Self::NUM_COLS,
-        )
+        );
+        // Write the nonces to the trace.
+        for i in 0..trace.height() {
+            let cols: &mut MemCopyCols<F, NumWords> =
+                trace.values[i * Self::NUM_COLS..(i + 1) * Self::NUM_COLS].borrow_mut();
+            cols.nonce = F::from_canonical_usize(i);
+        }
+        trace
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -213,7 +221,7 @@ impl<AB: SP1AirBuilder, NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sy
             row.shard,
             row.channel,
             row.clk,
-            AB::F::from_canonical_u32(0u32),
+            row.nonce,
             AB::F::from_canonical_u32(Self::syscall_id()),
             row.src_ptr,
             row.dst_ptr,

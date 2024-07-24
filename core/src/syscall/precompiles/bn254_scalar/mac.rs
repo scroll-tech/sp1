@@ -32,6 +32,7 @@ pub struct Bn254ScalarMacCols<T> {
     is_real: T,
     shard: T,
     channel: T,
+    nonce: T,
     clk: T,
     arg1_ptr: T,
     arg2_ptr: T,
@@ -164,7 +165,16 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
             row
         });
 
-        RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_COLS)
+        let mut trace =
+            RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_COLS);
+        // Write the nonces to the trace.
+        for i in 0..trace.height() {
+            let cols: &mut Bn254ScalarMacCols<F> =
+                trace.values[i * NUM_COLS..(i + 1) * NUM_COLS].borrow_mut();
+            cols.nonce = F::from_canonical_usize(i);
+        }
+
+        trace
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
@@ -287,7 +297,7 @@ where
             row.shard,
             row.channel,
             row.clk,
-            AB::F::from_canonical_u32(0u32),
+            row.nonce,
             syscall_id,
             row.arg1_ptr,
             row.arg2_ptr,
