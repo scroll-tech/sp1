@@ -103,7 +103,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
                     .nonce_lookup
                     .get(&event.lookup_id)
                     .copied()
-                    .unwrap_or_default(),
+                    .expect("should not be none"),
             );
 
             let mul = cols.mul_eval.populate(

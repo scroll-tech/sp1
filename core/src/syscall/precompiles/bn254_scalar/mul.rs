@@ -98,7 +98,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
                     .nonce_lookup
                     .get(&event.lookup_id)
                     .copied()
-                    .unwrap_or_default(),
+                    .expect("should not be none"),
             );
 
             cols.eval.populate(

@@ -140,7 +140,7 @@ impl<F: PrimeField32, NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength
                     .nonce_lookup
                     .get(&event.lookup_id)
                     .copied()
-                    .unwrap_or_default(),
+                    .expect("should not be none"),
             );
 
             for i in 0..NumWords::USIZE {
