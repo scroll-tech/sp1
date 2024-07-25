@@ -93,6 +93,14 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
             cols.p_ptr = F::from_canonical_u32(event.arg1.ptr);
             cols.q_ptr = F::from_canonical_u32(event.arg2.ptr);
 
+            cols.nonce = F::from_canonical_u32(
+                output
+                    .nonce_lookup
+                    .get(&event.lookup_id)
+                    .copied()
+                    .unwrap_or_default(),
+            );
+
             cols.eval.populate(
                 &mut new_byte_lookup_events,
                 event.shard,
@@ -138,7 +146,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
         for i in 0..trace.height() {
             let cols: &mut Bn254ScalarMulCols<F> =
                 trace.values[i * NUM_COLS..(i + 1) * NUM_COLS].borrow_mut();
-            cols.nonce = F::from_canonical_usize(i);
+            //cols.nonce = F::from_canonical_usize(i);
         }
 
         trace
