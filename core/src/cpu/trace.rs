@@ -711,11 +711,15 @@ impl CpuChip {
             }
 
             // Write the syscall nonce.
-            ecall_cols.syscall_nonce = F::from_canonical_u32(
-                nonce_lookup
-                    .get(&event.syscall_lookup_id)
-                    .copied()
-                    .unwrap_or_default(),
+            let syscall_nonce = nonce_lookup
+                .get(&event.syscall_lookup_id)
+                .copied()
+                .unwrap_or_default();
+            ecall_cols.syscall_nonce = F::from_canonical_u32(syscall_nonce);
+            log::info!(
+                "populate_ecall syscall_lookup_id {} syscall_nonce {} syscall_id {syscall_id:?}",
+                event.syscall_lookup_id,
+                syscall_nonce
             );
 
             is_halt = syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id());
