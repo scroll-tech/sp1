@@ -94,7 +94,11 @@ func Build(dataDir string) {
 
 			_, err = srsLagrange.ReadFrom(srsLagrangeFile)
 			if err != nil {
-				panic(err)
+				srsLagrange = trusted_setup.ToLagrange(scs, srs)
+				_, err = srsLagrange.WriteTo(srsLagrangeFile)
+				if err != nil {
+					panic(err)
+				}
 			}
 
 		}
