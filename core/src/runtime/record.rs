@@ -305,33 +305,34 @@ impl MachineRecord for ExecutionRecord {
             self.nonce_lookup.insert(event.lookup_id, i as u32);
         });
 
-        self.memcpy32_events
-            .iter()
-            .enumerate()
-            .for_each(|(i, event)| {
-                self.nonce_lookup.insert(event.lookup_id, i as u32);
-            });
+        /*
+                self.memcpy32_events
+                    .iter()
+                    .enumerate()
+                    .for_each(|(i, event)| {
+                        self.nonce_lookup.insert(event.lookup_id, i as u32);
+                    });
 
-        self.memcpy64_events
-            .iter()
-            .enumerate()
-            .for_each(|(i, event)| {
-                self.nonce_lookup.insert(event.lookup_id, i as u32);
-            });
+                self.memcpy64_events
+                    .iter()
+                    .enumerate()
+                    .for_each(|(i, event)| {
+                        self.nonce_lookup.insert(event.lookup_id, i as u32);
+                    });
 
-        self.bn254_scalar_mul_events
-            .iter()
-            .enumerate()
-            .for_each(|(i, event)| {
-                self.nonce_lookup.insert(event.lookup_id, i as u32);
-            });
-        self.bn254_scalar_mac_events
-            .iter()
-            .enumerate()
-            .for_each(|(i, event)| {
-                self.nonce_lookup.insert(event.lookup_id, i as u32);
-            });
-
+                self.bn254_scalar_mul_events
+                    .iter()
+                    .enumerate()
+                    .for_each(|(i, event)| {
+                        self.nonce_lookup.insert(event.lookup_id, i as u32);
+                    });
+                self.bn254_scalar_mac_events
+                    .iter()
+                    .enumerate()
+                    .for_each(|(i, event)| {
+                        self.nonce_lookup.insert(event.lookup_id, i as u32);
+                    });
+        */
         self.bitwise_events
             .iter()
             .enumerate()

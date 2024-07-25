@@ -135,13 +135,15 @@ impl<F: PrimeField32, NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength
             cols.src_ptr = F::from_canonical_u32(event.src_ptr);
             cols.dst_ptr = F::from_canonical_u32(event.dst_ptr);
 
-            cols.nonce = F::from_canonical_u32(
-                output
-                    .nonce_lookup
-                    .get(&event.lookup_id)
-                    .copied()
-                    .expect("should not be none"),
-            );
+            /*
+                cols.nonce = F::from_canonical_u32(
+                    output
+                        .nonce_lookup
+                        .get(&event.lookup_id)
+                        .copied()
+                        .expect("should not be none"),
+                );
+            */
 
             for i in 0..NumWords::USIZE {
                 cols.src_access[i].populate(

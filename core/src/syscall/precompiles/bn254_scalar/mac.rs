@@ -98,13 +98,15 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
             cols.arg1_ptr = F::from_canonical_u32(event.arg1.ptr);
             cols.arg2_ptr = F::from_canonical_u32(event.arg2.ptr);
 
-            cols.nonce = F::from_canonical_u32(
-                output
-                    .nonce_lookup
-                    .get(&event.lookup_id)
-                    .copied()
-                    .expect("should not be none"),
-            );
+            /*
+                cols.nonce = F::from_canonical_u32(
+                    output
+                        .nonce_lookup
+                        .get(&event.lookup_id)
+                        .copied()
+                        .expect("should not be none"),
+                );
+            */
 
             let mul = cols.mul_eval.populate(
                 &mut new_byte_lookup_events,

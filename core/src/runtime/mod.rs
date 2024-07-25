@@ -928,10 +928,20 @@ impl<'a> Runtime<'a> {
                     _ => (self.opts.split_opts.deferred_shift_threshold, 1),
                 };
                 let nonce = (((*syscall_count as usize) % threshold) * multiplier) as u32;
-                self.record.nonce_lookup.insert(syscall_lookup_id, nonce);
-                log::info!(
-                    "execute_instruction {syscall:?} {syscall_count} {nonce} {syscall_lookup_id}"
-                );
+                // FIXME
+                match syscall {
+                    SyscallCode::BN254_SCALAR_MAC
+                    | SyscallCode::BN254_SCALAR_MUL
+                    | SyscallCode::MEMCPY_32
+                    | SyscallCode::MEMCPY_64 => {}
+                    _ => {
+                        self.record.nonce_lookup.insert(syscall_lookup_id, nonce);
+                    }
+                }
+
+                //log::info!(
+                //    "execute_instruction {syscall:?} {syscall_count} {nonce} {syscall_lookup_id}"
+                //);
                 *syscall_count += 1;
             }
             Opcode::EBREAK => {

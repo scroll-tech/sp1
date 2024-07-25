@@ -716,11 +716,24 @@ impl CpuChip {
                 .copied()
                 .unwrap_or_default();
             ecall_cols.syscall_nonce = F::from_canonical_u32(syscall_nonce);
+
+            // FIXME
+
+            if syscall_id == F::from_canonical_u32(SyscallCode::MEMCPY_32.syscall_id())
+                || syscall_id == F::from_canonical_u32(SyscallCode::MEMCPY_64.syscall_id())
+                || syscall_id == F::from_canonical_u32(SyscallCode::BN254_SCALAR_MAC.syscall_id())
+                || syscall_id == F::from_canonical_u32(SyscallCode::BN254_SCALAR_MUL.syscall_id())
+            {
+                ecall_cols.syscall_nonce = F::from_canonical_u32(0);
+            }
+
+            /*
             log::info!(
                 "populate_ecall syscall_lookup_id {} syscall_nonce {} syscall_id {syscall_id:?}",
                 event.syscall_lookup_id,
                 syscall_nonce
             );
+            */
 
             is_halt = syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id());
 
