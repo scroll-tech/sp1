@@ -678,10 +678,10 @@ impl<'a> Runtime<'a> {
                 let value = (memory_read_value).to_le_bytes()[(addr % 4) as usize];
                 a = ((value as i8) as i32) as u32;
                 memory_store_value = Some(memory_read_value);
-                println!(
-                    "[clk: {}, pc: 0x{:x}] LB: {:?} <- {:x}",
-                    self.state.global_clk, self.state.pc, rd, a
-                );
+                //println!(
+                //    "[clk: {}, pc: 0x{:x}] LB: {:?} <- {:x}",
+                //    self.state.global_clk, self.state.pc, rd, a
+                //);
                 self.rw(rd, a);
             }
             Opcode::LH => {
@@ -696,10 +696,10 @@ impl<'a> Runtime<'a> {
                 };
                 a = ((value as i16) as i32) as u32;
                 memory_store_value = Some(memory_read_value);
-                println!(
-                    "[clk: {}, pc: 0x{:x}] LH: {:?} <- {:x}",
-                    self.state.global_clk, self.state.pc, rd, a
-                );
+                //println!(
+                //    "[clk: {}, pc: 0x{:x}] LH: {:?} <- {:x}",
+                //    self.state.global_clk, self.state.pc, rd, a
+                //);
                 self.rw(rd, a);
             }
             Opcode::LW => {
@@ -709,10 +709,10 @@ impl<'a> Runtime<'a> {
                 }
                 a = memory_read_value;
                 memory_store_value = Some(memory_read_value);
-                println!(
-                    "[clk: {}, pc: 0x{:x}] LW: {:?} <- {}",
-                    self.state.global_clk, self.state.pc, rd, a
-                );
+                //println!(
+                //    "[clk: {}, pc: 0x{:x}] LW: {:?} <- {}",
+                //    self.state.global_clk, self.state.pc, rd, a
+                //);
                 self.rw(rd, a);
             }
             Opcode::LBU => {
@@ -748,10 +748,10 @@ impl<'a> Runtime<'a> {
                     _ => unreachable!(),
                 };
                 memory_store_value = Some(value);
-                println!(
-                    "[clk: {}, pc: 0x{:x}] SB 0x{:x} <- 0x{:x}",
-                    self.state.global_clk, pc, addr, value
-                );
+                //println!(
+                //    "[clk: {}, pc: 0x{:x}] SB 0x{:x} <- 0x{:x}",
+                //    self.state.global_clk, pc, addr, value
+                //);
                 self.mw_cpu(align(addr), value, MemoryAccessPosition::Memory);
             }
             Opcode::SH => {
@@ -765,10 +765,10 @@ impl<'a> Runtime<'a> {
                     _ => unreachable!(),
                 };
                 memory_store_value = Some(value);
-                println!(
-                    "[clk: {}, pc: 0x{:x}] SH 0x{:x} <- 0x{:x}",
-                    self.state.global_clk, pc, addr, value
-                );
+                //println!(
+                //    "[clk: {}, pc: 0x{:x}] SH 0x{:x} <- 0x{:x}",
+                //    self.state.global_clk, pc, addr, value
+                //);
                 self.mw_cpu(align(addr), value, MemoryAccessPosition::Memory);
             }
             Opcode::SW => {
@@ -778,10 +778,10 @@ impl<'a> Runtime<'a> {
                 }
                 let value = a;
                 memory_store_value = Some(value);
-                println!(
-                    "[clk: {}, pc: 0x{:x}] SW 0x{:x} <- 0x{:x}",
-                    self.state.global_clk, pc, addr, value
-                );
+                //println!(
+                //    "[clk: {}, pc: 0x{:x}] SW 0x{:x} <- 0x{:x}",
+                //    self.state.global_clk, pc, addr, value
+                //);
                 self.mw_cpu(align(addr), value, MemoryAccessPosition::Memory);
             }
 
