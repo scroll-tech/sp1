@@ -12,7 +12,6 @@ use std::borrow::{Borrow, BorrowMut};
 use tracing::instrument;
 
 use super::columns::MemoryInitCols;
-use crate::air::Block;
 use crate::air::SP1RecursionAirBuilder;
 use crate::memory::MemoryGlobalChip;
 use crate::runtime::{ExecutionRecord, RecursionProgram};
@@ -68,17 +67,17 @@ impl<F: PrimeField32> MachineAir<F> for MemoryGlobalChip {
                 let (addr, timestamp, value) =
                     &input.last_memory_record[i - input.first_memory_record.len()];
                 let last = i == nb_events - 1;
-                let (next_addr, _, _) = if last {
-                    &(F::zero(), F::zero(), Block::from(F::zero()))
+                let next_addr = if last {
+                    F::zero()
                 } else {
-                    &input.last_memory_record[i - input.first_memory_record.len() + 1]
+                    input.last_memory_record[i - input.first_memory_record.len() + 1].0
                 };
                 cols.addr = *addr;
                 cols.timestamp = *timestamp;
                 cols.value = *value;
                 cols.is_finalize = F::one();
                 (cols.diff_16bit_limb, cols.diff_12bit_limb) = if !last {
-                    compute_addr_diff(*next_addr, *addr, true)
+                    compute_addr_diff(next_addr, *addr, true)
                 } else {
                     (F::zero(), F::zero())
                 };
