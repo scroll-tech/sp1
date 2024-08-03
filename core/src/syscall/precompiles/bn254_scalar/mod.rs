@@ -82,7 +82,7 @@ impl Bn254FieldOperation {
 pub struct Bn254FieldArithEvent {
     pub lookup_id: u128,
     pub shard: u32,
-    pub channel: u32,
+    pub channel: u8,
     pub clk: u32,
     pub op: Bn254FieldOperation,
     pub arg1: FieldArithMemoryAccess<MemoryWriteRecord>,

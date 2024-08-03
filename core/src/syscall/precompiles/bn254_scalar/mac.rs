@@ -93,7 +93,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
 
             cols.is_real = F::one();
             cols.shard = F::from_canonical_u32(event.shard);
-            cols.channel = F::from_canonical_u32(event.channel);
+            cols.channel = F::from_canonical_u8(event.channel);
             cols.clk = F::from_canonical_u32(event.clk);
             cols.arg1_ptr = F::from_canonical_u32(event.arg1.ptr);
             cols.arg2_ptr = F::from_canonical_u32(event.arg2.ptr);

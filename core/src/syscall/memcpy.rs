@@ -25,7 +25,7 @@ use crate::{
 pub struct MemCopyEvent {
     pub lookup_id: u128,
     pub shard: u32,
-    pub channel: u32,
+    pub channel: u8,
     pub clk: u32,
     pub src_ptr: u32,
     pub dst_ptr: u32,
@@ -130,7 +130,7 @@ impl<F: PrimeField32, NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength
 
             cols.is_real = F::one();
             cols.shard = F::from_canonical_u32(event.shard);
-            cols.channel = F::from_canonical_u32(event.channel);
+            cols.channel = F::from_canonical_u8(event.channel);
             cols.clk = F::from_canonical_u32(event.clk);
             cols.src_ptr = F::from_canonical_u32(event.src_ptr);
             cols.dst_ptr = F::from_canonical_u32(event.dst_ptr);
