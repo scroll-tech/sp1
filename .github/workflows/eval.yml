@@ -11,10 +11,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner_label: self-hosted-x86
-            arch: x86
-          - runner_label: self-hosted-arm64
-            arch: arm64
+          - runner_label: self-hosted-x64
+            arch: x64
     if: "! contains(toJSON(github.event.commits.*.message), '[skip-ci]')"
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
