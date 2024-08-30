@@ -6,22 +6,29 @@ use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::AbstractField;
 use p3_field::{Field, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use sp1_core_executor::events::Bn254FieldOperation;
+use sp1_core_executor::events::ByteRecord;
+use sp1_core_executor::events::FieldOperation;
+use sp1_core_executor::events::NUM_WORDS_PER_FE;
+use sp1_core_executor::syscalls::SyscallCode;
+use sp1_core_executor::ExecutionRecord;
+use sp1_core_executor::Program;
+use sp1_curves::params::FieldParameters;
+use sp1_curves::params::Limbs;
+use sp1_curves::params::NumLimbs;
+use sp1_curves::weierstrass::bn254::Bn254ScalarField;
 use sp1_derive::AlignedBorrow;
+use sp1_stark::air::MachineAir;
+use sp1_stark::air::SP1AirBuilder;
 use typenum::U8;
 
+use crate::air::MemoryAirBuilder;
+use crate::utils::limbs_from_prev_access;
+use crate::utils::pad_rows;
 use crate::{
-    air::MachineAir,
-    bytes::event::ByteRecord,
     memory::{MemoryCols, MemoryReadCols, MemoryWriteCols},
-    operations::field::field_op::{FieldOpCols, FieldOperation},
-    operations::field::params::{FieldParameters, NumLimbs},
-    runtime::{ExecutionRecord, Program, Syscall, SyscallCode},
-    stark::SP1AirBuilder,
-    syscall::precompiles::bn254_scalar::Limbs,
-    utils::{ec::weierstrass::bn254::Bn254ScalarField, limbs_from_prev_access, pad_rows},
+    operations::field::field_op::FieldOpCols,
 };
-
-use super::{create_bn254_scalar_arith_event, Bn254FieldOperation, NUM_WORDS_PER_FE};
 
 const NUM_COLS: usize = core::mem::size_of::<Bn254ScalarMacCols<u8>>();
 const OP: Bn254FieldOperation = Bn254FieldOperation::Mac;
@@ -49,24 +56,6 @@ pub struct Bn254ScalarMacChip;
 impl Bn254ScalarMacChip {
     pub fn new() -> Self {
         Self
-    }
-}
-
-impl Syscall for Bn254ScalarMacChip {
-    fn execute(
-        &self,
-        rt: &mut crate::runtime::SyscallContext,
-        arg1: u32,
-        arg2: u32,
-    ) -> Option<u32> {
-        let event = create_bn254_scalar_arith_event(rt, arg1, arg2, OP);
-        rt.record_mut().bn254_scalar_mac_events.push(event);
-
-        None
-    }
-
-    fn num_extra_cycles(&self) -> u32 {
-        1
     }
 }
 
@@ -163,10 +152,8 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
             let cols: &mut Bn254ScalarMacCols<F> = row.as_mut_slice().borrow_mut();
 
             let zero = BigUint::zero();
-            cols.mul_eval
-                .populate(&mut vec![], 0, 0, &zero, &zero, FieldOperation::Mul);
-            cols.add_eval
-                .populate(&mut vec![], 0, 0, &zero, &zero, FieldOperation::Add);
+            cols.mul_eval.populate(&mut vec![], 0, 0, &zero, &zero, FieldOperation::Mul);
+            cols.add_eval.populate(&mut vec![], 0, 0, &zero, &zero, FieldOperation::Add);
 
             row
         });
@@ -175,7 +162,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
             RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_COLS);
         // Write the nonces to the trace.
         for i in 0..trace.height() {
-            let cols: &mut Bn254ScalarMacCols<F> =
+            let _cols: &mut Bn254ScalarMacCols<F> =
                 trace.values[i * NUM_COLS..(i + 1) * NUM_COLS].borrow_mut();
             //cols.nonce = F::from_canonical_usize(i);
         }
@@ -184,12 +171,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
-        shard
-            .bn254_scalar_mac_events
-            .iter()
-            .filter(|e| e.op == OP)
-            .count()
-            != 0
+        shard.bn254_scalar_mac_events.iter().filter(|e| e.op == OP).count() != 0
     }
 }
 
@@ -238,10 +220,9 @@ where
         );
 
         for i in 0..Bn254ScalarField::NB_LIMBS {
-            builder.when(row.is_real).assert_eq(
-                row.add_eval.result[i],
-                row.arg1_access[i / 4].value()[i % 4],
-            );
+            builder
+                .when(row.is_real)
+                .assert_eq(row.add_eval.result[i], row.arg1_access[i / 4].value()[i % 4]);
         }
 
         builder.eval_memory_access_slice(
@@ -267,18 +248,14 @@ where
             .rev()
             .cloned()
             .map(|v| v.into())
-            .fold(AB::Expr::zero(), |acc, b| {
-                acc * AB::Expr::from_canonical_u16(0x100) + b
-            });
+            .fold(AB::Expr::zero(), |acc, b| acc * AB::Expr::from_canonical_u16(0x100) + b);
 
         let b_ptr = arg2.0[4..8]
             .iter()
             .rev()
             .cloned()
             .map(|v| v.into())
-            .fold(AB::Expr::zero(), |acc, b| {
-                acc * AB::Expr::from_canonical_u16(0x100) + b
-            });
+            .fold(AB::Expr::zero(), |acc, b| acc * AB::Expr::from_canonical_u16(0x100) + b);
 
         builder.eval_memory_access_slice(
             row.shard,

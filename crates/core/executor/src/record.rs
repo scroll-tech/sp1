@@ -8,14 +8,12 @@ use serde::{Deserialize, Serialize};
 
 use super::{program::Program, Opcode};
 use crate::events::{
-    add_sharded_byte_lookup_events, AluEvent, ByteLookupEvent, ByteRecord, CpuEvent,
-    EdDecompressEvent, EllipticCurveAddEvent, EllipticCurveDecompressEvent,
+    add_sharded_byte_lookup_events, AluEvent, Bn254FieldArithEvent, ByteLookupEvent, ByteRecord,
+    CpuEvent, EdDecompressEvent, EllipticCurveAddEvent, EllipticCurveDecompressEvent,
     EllipticCurveDoubleEvent, Fp2AddSubEvent, Fp2MulEvent, FpOpEvent, KeccakPermuteEvent, LookupId,
-    MemoryInitializeFinalizeEvent, MemoryRecordEnum, ShaCompressEvent, ShaExtendEvent,
-    Uint256MulEvent,
+    MemCopyEvent, MemoryInitializeFinalizeEvent, MemoryRecordEnum, ShaCompressEvent,
+    ShaExtendEvent, Uint256MulEvent,
 };
-use crate::syscall::precompiles::bn254_scalar::Bn254FieldArithEvent;
-use crate::syscall::MemCopyEvent;
 
 /// A record of the execution of a program.
 ///
@@ -63,9 +61,6 @@ pub struct ExecutionRecord {
     /// A trace of the bn254 double events.
     pub bn254_double_events: Vec<EllipticCurveDoubleEvent>,
     /// A trace of the k256 decompress events.
-    pub bn254_scalar_mul_events: Vec<Bn254FieldArithEvent>,
-    pub bn254_scalar_mac_events: Vec<Bn254FieldArithEvent>,
-
     pub k256_decompress_events: Vec<EllipticCurveDecompressEvent>,
     /// A trace of the bls12381 add events.
     pub bls12381_add_events: Vec<EllipticCurveAddEvent>,
@@ -80,9 +75,6 @@ pub struct ExecutionRecord {
     /// A trace of the bls12381 decompress events.
     pub bls12381_decompress_events: Vec<EllipticCurveDecompressEvent>,
     /// A trace of the bls12381 fp events.
-    pub memcpy32_events: Vec<MemCopyEvent>,
-    pub memcpy64_events: Vec<MemCopyEvent>,
-
     pub bls12381_fp_events: Vec<FpOpEvent>,
     /// A trace of the bls12381 fp2 add/sub events.
     pub bls12381_fp2_addsub_events: Vec<Fp2AddSubEvent>,
@@ -94,58 +86,17 @@ pub struct ExecutionRecord {
     pub bn254_fp2_addsub_events: Vec<Fp2AddSubEvent>,
     /// A trace of the bn254 fp2 mul events.
     pub bn254_fp2_mul_events: Vec<Fp2MulEvent>,
+
+    pub bn254_scalar_mul_events: Vec<Bn254FieldArithEvent>,
+    pub bn254_scalar_mac_events: Vec<Bn254FieldArithEvent>,
+    pub memcpy32_events: Vec<MemCopyEvent>,
+    pub memcpy64_events: Vec<MemCopyEvent>,
+
     /// The public values.
     pub public_values: PublicValues<u32, u32>,
     /// The nonce lookup.
     pub nonce_lookup: HashMap<LookupId, u32>,
 }
-
-        stats.insert(
-            "bn254_scalar_mul_events".to_string(),
-            self.bn254_scalar_mul_events.len(),
-        );
-        stats.insert(
-            "bn254_scalar_mac_events".to_string(),
-            self.bn254_scalar_mac_events.len(),
-        );
-
-        stats.insert("memcpy32_events".to_string(), self.memcpy32_events.len());
-        stats.insert("memcpy64_events".to_string(), self.memcpy64_events.len());
-
-        self.bn254_scalar_mul_events
-            .append(&mut other.bn254_scalar_mul_events);
-        self.bn254_scalar_mac_events
-            .append(&mut other.bn254_scalar_mac_events);
-        self.memcpy32_events.append(&mut other.memcpy32_events);
-        self.memcpy64_events.append(&mut other.memcpy64_events);
-        /*
-                self.memcpy32_events
-                    .iter()
-                    .enumerate()
-                    .for_each(|(i, event)| {
-                        self.nonce_lookup.insert(event.lookup_id, i as u32);
-                    });
-
-                self.memcpy64_events
-                    .iter()
-                    .enumerate()
-                    .for_each(|(i, event)| {
-                        self.nonce_lookup.insert(event.lookup_id, i as u32);
-                    });
-
-                self.bn254_scalar_mul_events
-                    .iter()
-                    .enumerate()
-                    .for_each(|(i, event)| {
-                        self.nonce_lookup.insert(event.lookup_id, i as u32);
-                    });
-                self.bn254_scalar_mac_events
-                    .iter()
-                    .enumerate()
-                    .for_each(|(i, event)| {
-                        self.nonce_lookup.insert(event.lookup_id, i as u32);
-                    });
-        */
 
 impl ExecutionRecord {
     /// Create a new [`ExecutionRecord`].
@@ -285,34 +236,11 @@ impl ExecutionRecord {
         split_events!(self, bn254_fp_events, shards, opts.deferred, last);
         split_events!(self, bn254_fp2_addsub_events, shards, opts.deferred, last);
         split_events!(self, bn254_fp2_mul_events, shards, opts.deferred, last);
-            shards,
-            opts.deferred_shift_threshold,
-            last
-        );
-        split_events!(
-            self,
-            memcpy32_events,
-            shards,
-            opts.deferred_shift_threshold,
-            last
-        );
-        split_events!(
-            self,
-            memcpy64_events,
-            shards,
-            opts.deferred_shift_threshold,
-            last
-        );
-        split_events!(
-            self,
-            bn254_scalar_mul_events,
-            shards,
-            opts.deferred_shift_threshold,
-            last
-        );
-        split_events!(
-            self,
-            bn254_scalar_mac_events,
+
+        split_events!(self, memcpy32_events, shards, opts.deferred, last);
+        split_events!(self, memcpy64_events, shards, opts.deferred, last);
+        split_events!(self, bn254_scalar_mul_events, shards, opts.deferred, last);
+        split_events!(self, bn254_scalar_mac_events, shards, opts.deferred, last);
         // _ = last_pct;
 
         if last {
@@ -417,6 +345,13 @@ impl MachineRecord for ExecutionRecord {
         );
         stats.insert("memory_initialize_events".to_string(), self.memory_initialize_events.len());
         stats.insert("memory_finalize_events".to_string(), self.memory_finalize_events.len());
+
+        stats.insert("bn254_scalar_mul_events".to_string(), self.bn254_scalar_mul_events.len());
+        stats.insert("bn254_scalar_mac_events".to_string(), self.bn254_scalar_mac_events.len());
+
+        stats.insert("memcpy32_events".to_string(), self.memcpy32_events.len());
+        stats.insert("memcpy64_events".to_string(), self.memcpy64_events.len());
+
         if !self.cpu_events.is_empty() {
             let shard = self.cpu_events[0].shard;
             stats.insert(
@@ -459,6 +394,11 @@ impl MachineRecord for ExecutionRecord {
         self.bn254_fp2_addsub_events.append(&mut other.bn254_fp2_addsub_events);
         self.bn254_fp2_mul_events.append(&mut other.bn254_fp2_mul_events);
         self.bls12381_decompress_events.append(&mut other.bls12381_decompress_events);
+
+        self.bn254_scalar_mul_events.append(&mut other.bn254_scalar_mul_events);
+        self.bn254_scalar_mac_events.append(&mut other.bn254_scalar_mac_events);
+        self.memcpy32_events.append(&mut other.memcpy32_events);
+        self.memcpy64_events.append(&mut other.memcpy64_events);
 
         self.bls12381_decompress_events.append(&mut other.bls12381_decompress_events);
 
@@ -504,6 +444,35 @@ impl MachineRecord for ExecutionRecord {
         self.lt_events.iter().enumerate().for_each(|(i, event)| {
             self.nonce_lookup.insert(event.lookup_id, i as u32);
         });
+
+        /*
+                self.memcpy32_events
+                    .iter()
+                    .enumerate()
+                    .for_each(|(i, event)| {
+                        self.nonce_lookup.insert(event.lookup_id, i as u32);
+                    });
+
+                self.memcpy64_events
+                    .iter()
+                    .enumerate()
+                    .for_each(|(i, event)| {
+                        self.nonce_lookup.insert(event.lookup_id, i as u32);
+                    });
+
+                self.bn254_scalar_mul_events
+                    .iter()
+                    .enumerate()
+                    .for_each(|(i, event)| {
+                        self.nonce_lookup.insert(event.lookup_id, i as u32);
+                    });
+                self.bn254_scalar_mac_events
+                    .iter()
+                    .enumerate()
+                    .for_each(|(i, event)| {
+                        self.nonce_lookup.insert(event.lookup_id, i as u32);
+                    });
+        */
     }
 
     /// Retrieves the public values.  This method is needed for the `MachineRecord` trait, since

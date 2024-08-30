@@ -681,10 +681,8 @@ impl CpuChip {
             }
 
             // Write the syscall nonce.
-            let syscall_nonce = nonce_lookup
-                .get(&event.syscall_lookup_id)
-                .copied()
-                .unwrap_or_default();
+            let syscall_nonce =
+                nonce_lookup.get(&event.syscall_lookup_id).copied().unwrap_or_default();
             ecall_cols.syscall_nonce = F::from_canonical_u32(syscall_nonce);
 
             // FIXME

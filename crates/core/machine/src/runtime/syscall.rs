@@ -109,23 +109,15 @@ pub enum SyscallCode {
     /// Executes the `BLS12381_DOUBLE` precompile.
     BLS12381_DOUBLE = 0x00_00_01_1F,
 
-    /// Execute the `BN254_SCALAR_MUL` precompile.
-    BN254_SCALAR_MUL = 0x00_01_02_20,
     /// Executes the `BLS12381_FP_ADD` precompile.
     BLS12381_FP_ADD = 0x00_01_01_20,
 
-    /// Execute the `BN254_SCALAR_MAC` precompile.
-    BN254_SCALAR_MAC = 0x00_01_02_21,
     /// Executes the `BLS12381_FP_SUB` precompile.
     BLS12381_FP_SUB = 0x00_01_01_21,
 
     /// Executes the `BLS12381_FP_MUL` precompile.
     BLS12381_FP_MUL = 0x00_01_01_22,
-    /// Execute the `MEMCPY_32` precompile.
-    MEMCPY_32 = 0x00_00_02_30,
 
-    /// Execute the `MEMCPY_64` precompile.
-    MEMCPY_64 = 0x00_00_02_31,
     /// Executes the `BLS12381_FP2_ADD` precompile.
     BLS12381_FP2_ADD = 0x00_01_01_23,
 
@@ -152,6 +144,15 @@ pub enum SyscallCode {
 
     /// Executes the `BN254_FP2_MUL` precompile.
     BN254_FP2_MUL = 0x00_01_01_2B,
+
+    /// Execute the `MEMCPY_32` precompile.
+    MEMCPY_32 = 0x00_00_02_30,
+    /// Execute the `MEMCPY_64` precompile.
+    MEMCPY_64 = 0x00_00_02_31,
+    /// Execute the `BN254_SCALAR_MAC` precompile.
+    BN254_SCALAR_MAC = 0x00_01_02_21,
+    /// Execute the `BN254_SCALAR_MUL` precompile.
+    BN254_SCALAR_MUL = 0x00_01_02_20,
 }
 
 impl SyscallCode {
@@ -351,22 +352,12 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
     syscall_map.insert(SyscallCode::HALT, Arc::new(SyscallHalt {}));
     syscall_map.insert(SyscallCode::SHA_EXTEND, Arc::new(ShaExtendChip::new()));
     syscall_map.insert(SyscallCode::SHA_COMPRESS, Arc::new(ShaCompressChip::new()));
-    syscall_map.insert(
-        SyscallCode::ED_ADD,
-        Arc::new(EdAddAssignChip::<Ed25519>::new()),
-    );
-    syscall_map.insert(
-        SyscallCode::ED_DECOMPRESS,
-        Arc::new(EdDecompressChip::<Ed25519Parameters>::new()),
-    );
-    syscall_map.insert(
-        SyscallCode::KECCAK_PERMUTE,
-        Arc::new(KeccakPermuteChip::new()),
-    );
-    syscall_map.insert(
-        SyscallCode::SECP256K1_ADD,
-        Arc::new(WeierstrassAddAssignChip::<Secp256k1>::new()),
-    );
+    syscall_map.insert(SyscallCode::ED_ADD, Arc::new(EdAddAssignChip::<Ed25519>::new()));
+    syscall_map
+        .insert(SyscallCode::ED_DECOMPRESS, Arc::new(EdDecompressChip::<Ed25519Parameters>::new()));
+    syscall_map.insert(SyscallCode::KECCAK_PERMUTE, Arc::new(KeccakPermuteChip::new()));
+    syscall_map
+        .insert(SyscallCode::SECP256K1_ADD, Arc::new(WeierstrassAddAssignChip::<Secp256k1>::new()));
     syscall_map.insert(
         SyscallCode::SECP256K1_DOUBLE,
         Arc::new(WeierstrassDoubleAssignChip::<Secp256k1>::new()),
@@ -375,18 +366,11 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
         SyscallCode::SECP256K1_DECOMPRESS,
         Arc::new(WeierstrassDecompressChip::<Secp256k1>::with_lsb_rule()),
     );
-    syscall_map.insert(
-        SyscallCode::BN254_ADD,
-        Arc::new(WeierstrassAddAssignChip::<Bn254>::new()),
-    );
-    syscall_map.insert(
-        SyscallCode::BN254_DOUBLE,
-        Arc::new(WeierstrassDoubleAssignChip::<Bn254>::new()),
-    );
-    syscall_map.insert(
-        SyscallCode::BLS12381_ADD,
-        Arc::new(WeierstrassAddAssignChip::<Bls12381>::new()),
-    );
+    syscall_map.insert(SyscallCode::BN254_ADD, Arc::new(WeierstrassAddAssignChip::<Bn254>::new()));
+    syscall_map
+        .insert(SyscallCode::BN254_DOUBLE, Arc::new(WeierstrassDoubleAssignChip::<Bn254>::new()));
+    syscall_map
+        .insert(SyscallCode::BLS12381_ADD, Arc::new(WeierstrassAddAssignChip::<Bls12381>::new()));
     syscall_map.insert(
         SyscallCode::BLS12381_DOUBLE,
         Arc::new(WeierstrassDoubleAssignChip::<Bls12381>::new()),
@@ -406,15 +390,11 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
     );
     syscall_map.insert(
         SyscallCode::BLS12381_FP2_ADD,
-        Arc::new(Fp2AddSubSyscall::<Bls12381BaseField>::new(
-            FieldOperation::Add,
-        )),
+        Arc::new(Fp2AddSubSyscall::<Bls12381BaseField>::new(FieldOperation::Add)),
     );
     syscall_map.insert(
         SyscallCode::BLS12381_FP2_SUB,
-        Arc::new(Fp2AddSubSyscall::<Bls12381BaseField>::new(
-            FieldOperation::Sub,
-        )),
+        Arc::new(Fp2AddSubSyscall::<Bls12381BaseField>::new(FieldOperation::Sub)),
     );
     syscall_map.insert(
         SyscallCode::BLS12381_FP2_MUL,
@@ -440,28 +420,15 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
         SyscallCode::BN254_FP2_SUB,
         Arc::new(Fp2AddSubSyscall::<Bn254BaseField>::new(FieldOperation::Sub)),
     );
-    syscall_map.insert(
-        SyscallCode::BN254_FP2_MUL,
-        Arc::new(Fp2MulAssignChip::<Bn254BaseField>::new()),
-    );
-    syscall_map.insert(
-        SyscallCode::ENTER_UNCONSTRAINED,
-        Arc::new(SyscallEnterUnconstrained::new()),
-    );
-    syscall_map.insert(
-        SyscallCode::EXIT_UNCONSTRAINED,
-        Arc::new(SyscallExitUnconstrained::new()),
-    );
+    syscall_map
+        .insert(SyscallCode::BN254_FP2_MUL, Arc::new(Fp2MulAssignChip::<Bn254BaseField>::new()));
+    syscall_map
+        .insert(SyscallCode::ENTER_UNCONSTRAINED, Arc::new(SyscallEnterUnconstrained::new()));
+    syscall_map.insert(SyscallCode::EXIT_UNCONSTRAINED, Arc::new(SyscallExitUnconstrained::new()));
     syscall_map.insert(SyscallCode::WRITE, Arc::new(SyscallWrite::new()));
     syscall_map.insert(SyscallCode::COMMIT, Arc::new(SyscallCommit::new()));
-    syscall_map.insert(
-        SyscallCode::COMMIT_DEFERRED_PROOFS,
-        Arc::new(SyscallCommitDeferred::new()),
-    );
-    syscall_map.insert(
-        SyscallCode::VERIFY_SP1_PROOF,
-        Arc::new(SyscallVerifySP1Proof::new()),
-    );
+    syscall_map.insert(SyscallCode::COMMIT_DEFERRED_PROOFS, Arc::new(SyscallCommitDeferred::new()));
+    syscall_map.insert(SyscallCode::VERIFY_SP1_PROOF, Arc::new(SyscallVerifySP1Proof::new()));
     syscall_map.insert(SyscallCode::HINT_LEN, Arc::new(SyscallHintLen::new()));
     syscall_map.insert(SyscallCode::HINT_READ, Arc::new(SyscallHintRead::new()));
     syscall_map.insert(
@@ -469,23 +436,11 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
         Arc::new(WeierstrassDecompressChip::<Bls12381>::with_lexicographic_rule()),
     );
     syscall_map.insert(SyscallCode::UINT256_MUL, Arc::new(Uint256MulChip::new()));
-    syscall_map.insert(
-        SyscallCode::BN254_SCALAR_MUL,
-        Arc::new(Bn254ScalarMulChip::new()),
-    );
-    syscall_map.insert(
-        SyscallCode::BN254_SCALAR_MAC,
-        Arc::new(Bn254ScalarMacChip::new()),
-    );
+    syscall_map.insert(SyscallCode::BN254_SCALAR_MUL, Arc::new(Bn254ScalarMulChip::new()));
+    syscall_map.insert(SyscallCode::BN254_SCALAR_MAC, Arc::new(Bn254ScalarMacChip::new()));
 
-    syscall_map.insert(
-        SyscallCode::MEMCPY_32,
-        Arc::new(MemCopyChip::<U8, U32>::new()),
-    );
-    syscall_map.insert(
-        SyscallCode::MEMCPY_64,
-        Arc::new(MemCopyChip::<U16, U64>::new()),
-    );
+    syscall_map.insert(SyscallCode::MEMCPY_32, Arc::new(MemCopyChip::<U8, U32>::new()));
+    syscall_map.insert(SyscallCode::MEMCPY_64, Arc::new(MemCopyChip::<U16, U64>::new()));
 
     syscall_map
 }

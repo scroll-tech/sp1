@@ -1,67 +1,27 @@
-mod mac;
-mod mul;
-// mod general_field_op;
-
-pub use mac::Bn254ScalarMacChip;
-pub use mul::Bn254ScalarMulChip;
-
+/*
 use crate::{
     operations::field::params::{FieldParameters, NumWords},
     operations::field::{field_op::FieldOperation, params::Limbs},
     runtime::{MemoryReadRecord, MemoryWriteRecord, SyscallContext},
-    utils::ec::weierstrass::bn254::Bn254ScalarField,
 };
+*/
 use num::BigUint;
+use sp1_curves::{
+    params::{FieldParameters, NumWords},
+    weierstrass::bn254::Bn254ScalarField,
+};
 use typenum::Unsigned;
 
 use serde::{Deserialize, Serialize};
 
-pub(crate) const NUM_WORDS_PER_FE: usize = 8;
+use crate::{
+    events::{LookupId, MemoryReadRecord, MemoryWriteRecord},
+    syscalls::SyscallContext,
+};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FieldArithMemoryAccess<T> {
-    pub ptr: u32,
-    pub memory_records: Vec<T>,
-}
+use super::FieldOperation;
 
-impl FieldArithMemoryAccess<MemoryReadRecord> {
-    pub fn read(rt: &mut SyscallContext, ptr: u32, len: usize) -> Self {
-        let (memory_records, _) = rt.mr_slice(ptr, len);
-        Self {
-            ptr,
-            memory_records,
-        }
-    }
-
-    pub fn value_as_biguint(&self) -> BigUint {
-        BigUint::from_bytes_le(
-            &self
-                .memory_records
-                .iter()
-                .flat_map(|word| word.value.to_le_bytes())
-                .collect::<Vec<u8>>(),
-        )
-    }
-}
-
-impl FieldArithMemoryAccess<MemoryWriteRecord> {
-    pub fn write(rt: &mut SyscallContext, ptr: u32, values: &[u32]) -> Self {
-        Self {
-            ptr,
-            memory_records: rt.mw_slice(ptr, &values),
-        }
-    }
-
-    pub fn prev_value_as_biguint(&self) -> BigUint {
-        BigUint::from_bytes_le(
-            &self
-                .memory_records
-                .iter()
-                .flat_map(|word| word.prev_value.to_le_bytes())
-                .collect::<Vec<u8>>(),
-        )
-    }
-}
+pub const NUM_WORDS_PER_FE: usize = 8;
 
 #[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum Bn254FieldOperation {
@@ -80,7 +40,7 @@ impl Bn254FieldOperation {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Bn254FieldArithEvent {
-    pub lookup_id: u128,
+    pub lookup_id: LookupId,
     pub shard: u32,
     pub channel: u8,
     pub clk: u32,
@@ -114,11 +74,7 @@ pub fn create_bn254_scalar_arith_event(
     };
 
     let bn_arg1 = BigUint::from_bytes_le(
-        &arg1
-            .iter()
-            .copied()
-            .flat_map(|word| word.to_le_bytes())
-            .collect::<Vec<u8>>(),
+        &arg1.iter().copied().flat_map(|word| word.to_le_bytes()).collect::<Vec<u8>>(),
     );
     let modulus = Bn254ScalarField::modulus();
 
@@ -171,19 +127,41 @@ pub fn create_bn254_scalar_arith_event(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::{
-        runtime::{Program, Runtime},
-        utils::{run_test, setup_logger, tests::BN254_SCALAR_ARITH_ELF, SP1CoreOpts},
-    };
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FieldArithMemoryAccess<T> {
+    pub ptr: u32,
+    pub memory_records: Vec<T>,
+}
 
-    #[test]
-    fn test_bn254_scalar_arith_simple() {
-        setup_logger();
-        let program = Program::from(BN254_SCALAR_ARITH_ELF);
-        let mut rt = Runtime::new(program, SP1CoreOpts::default());
-        rt.run();
-        // run_test(program).unwrap();
+impl FieldArithMemoryAccess<MemoryReadRecord> {
+    pub fn read(rt: &mut SyscallContext, ptr: u32, len: usize) -> Self {
+        let (memory_records, _) = rt.mr_slice(ptr, len);
+        Self { ptr, memory_records }
+    }
+
+    pub fn value_as_biguint(&self) -> BigUint {
+        BigUint::from_bytes_le(
+            &self
+                .memory_records
+                .iter()
+                .flat_map(|word| word.value.to_le_bytes())
+                .collect::<Vec<u8>>(),
+        )
+    }
+}
+
+impl FieldArithMemoryAccess<MemoryWriteRecord> {
+    pub fn write(rt: &mut SyscallContext, ptr: u32, values: &[u32]) -> Self {
+        Self { ptr, memory_records: rt.mw_slice(ptr, &values) }
+    }
+
+    pub fn prev_value_as_biguint(&self) -> BigUint {
+        BigUint::from_bytes_le(
+            &self
+                .memory_records
+                .iter()
+                .flat_map(|word| word.prev_value.to_le_bytes())
+                .collect::<Vec<u8>>(),
+        )
     }
 }

@@ -6,21 +6,27 @@ use p3_air::{Air, AirBuilder, BaseAir};
 use p3_field::AbstractField;
 use p3_field::{Field, PrimeField32};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use sp1_core_executor::events::Bn254FieldOperation;
+use sp1_core_executor::events::ByteRecord;
+use sp1_core_executor::events::NUM_WORDS_PER_FE;
+use sp1_core_executor::syscalls::SyscallCode;
+use sp1_core_executor::ExecutionRecord;
+use sp1_core_executor::Program;
+use sp1_curves::params::FieldParameters;
+use sp1_curves::params::Limbs;
+use sp1_curves::params::NumLimbs;
+use sp1_curves::weierstrass::bn254::Bn254ScalarField;
 use sp1_derive::AlignedBorrow;
+use sp1_stark::air::MachineAir;
+use sp1_stark::air::SP1AirBuilder;
 
-use crate::bytes::event::ByteRecord;
+use crate::air::MemoryAirBuilder;
+use crate::utils::limbs_from_prev_access;
+use crate::utils::pad_rows;
 use crate::{
-    air::MachineAir,
     memory::{MemoryCols, MemoryReadCols, MemoryWriteCols},
     operations::field::field_op::FieldOpCols,
-    operations::field::params::{FieldParameters, NumLimbs},
-    runtime::{ExecutionRecord, Program, Syscall, SyscallCode},
-    stark::SP1AirBuilder,
-    syscall::precompiles::bn254_scalar::Limbs,
-    utils::{ec::weierstrass::bn254::Bn254ScalarField, limbs_from_prev_access, pad_rows},
 };
-
-use super::{create_bn254_scalar_arith_event, Bn254FieldOperation, NUM_WORDS_PER_FE};
 
 const NUM_COLS: usize = core::mem::size_of::<Bn254ScalarMulCols<u8>>();
 const OP: Bn254FieldOperation = Bn254FieldOperation::Mul;
@@ -45,24 +51,6 @@ pub struct Bn254ScalarMulChip;
 impl Bn254ScalarMulChip {
     pub fn new() -> Self {
         Self
-    }
-}
-
-impl Syscall for Bn254ScalarMulChip {
-    fn execute(
-        &self,
-        rt: &mut crate::runtime::SyscallContext,
-        arg1: u32,
-        arg2: u32,
-    ) -> Option<u32> {
-        let event = create_bn254_scalar_arith_event(rt, arg1, arg2, OP);
-        rt.record_mut().bn254_scalar_mul_events.push(event);
-
-        None
-    }
-
-    fn num_extra_cycles(&self) -> u32 {
-        1
     }
 }
 
@@ -136,8 +124,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
             let cols: &mut Bn254ScalarMulCols<F> = row.as_mut_slice().borrow_mut();
 
             let zero = BigUint::zero();
-            cols.eval
-                .populate(&mut vec![], 0, 0, &zero, &zero, OP.to_field_operation());
+            cols.eval.populate(&mut vec![], 0, 0, &zero, &zero, OP.to_field_operation());
 
             row
         });
@@ -146,7 +133,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
             RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_COLS);
         // Write the nonces to the trace.
         for i in 0..trace.height() {
-            let cols: &mut Bn254ScalarMulCols<F> =
+            let _cols: &mut Bn254ScalarMulCols<F> =
                 trace.values[i * NUM_COLS..(i + 1) * NUM_COLS].borrow_mut();
             //cols.nonce = F::from_canonical_usize(i);
         }
@@ -155,12 +142,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
-        shard
-            .bn254_scalar_mul_events
-            .iter()
-            .filter(|e| e.op == OP)
-            .count()
-            != 0
+        shard.bn254_scalar_mul_events.iter().filter(|e| e.op == OP).count() != 0
     }
 }
 
