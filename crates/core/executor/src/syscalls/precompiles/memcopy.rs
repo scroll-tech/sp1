@@ -11,6 +11,12 @@ pub struct MemCopySyscall<NumWords: ArrayLength, NumBytes: ArrayLength> {
     _marker: PhantomData<(NumWords, NumBytes)>,
 }
 
+impl<NumWords: ArrayLength, NumBytes: ArrayLength> MemCopySyscall<NumWords, NumBytes> {
+    pub const fn new() -> Self {
+        Self { _marker: PhantomData }
+    }
+}
+
 impl<NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength + Send + Sync> Syscall
     for MemCopySyscall<NumWords, NumBytes>
 {
