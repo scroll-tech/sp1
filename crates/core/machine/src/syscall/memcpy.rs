@@ -36,6 +36,10 @@ pub struct MemCopyChip<NumWords: ArrayLength, NumBytes: ArrayLength> {
     _marker: PhantomData<(NumWords, NumBytes)>,
 }
 
+use typenum::{U16, U32, U64, U8};
+pub type MemCopy32Chip = MemCopyChip<U8, U32>;
+pub type MemCopy64Chip = MemCopyChip<U16, U64>;
+
 impl<NumWords: ArrayLength, NumBytes: ArrayLength> MemCopyChip<NumWords, NumBytes> {
     const NUM_COLS: usize = core::mem::size_of::<MemCopyCols<u8, NumWords>>();
 

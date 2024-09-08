@@ -2,7 +2,13 @@ pub mod cost;
 
 use crate::{
     memory::{MemoryChipType, MemoryProgramChip},
-    syscall::precompiles::fptower::{Fp2AddSubAssignChip, Fp2MulAssignChip, FpOpChip},
+    syscall::{
+        memcpy::{self, MemCopy32Chip, MemCopy64Chip, MemCopyChip},
+        precompiles::{
+            bn254_scalar::{self, Bn254ScalarMacChip},
+            fptower::{Fp2AddSubAssignChip, Fp2MulAssignChip, FpOpChip},
+        },
+    },
 };
 use hashbrown::HashMap;
 use p3_field::PrimeField32;
@@ -24,6 +30,7 @@ pub(crate) mod riscv_chips {
         memory::MemoryChip,
         program::ProgramChip,
         syscall::precompiles::{
+            bn254_scalar::{Bn254ScalarMacChip, Bn254ScalarMulChip},
             edwards::{EdAddAssignChip, EdDecompressChip},
             keccak256::KeccakPermuteChip,
             sha256::{ShaCompressChip, ShaExtendChip},
@@ -116,6 +123,11 @@ pub enum RiscvAir<F: PrimeField32> {
     Bn254Fp2Mul(Fp2MulAssignChip<Bn254BaseField>),
     /// A precompile for BN-254 fp2 addition/subtraction.
     Bn254Fp2AddSub(Fp2AddSubAssignChip<Bn254BaseField>),
+
+    Bn254ScalarMac(bn254_scalar::Bn254ScalarMacChip),
+    Bn254ScalarMul(bn254_scalar::Bn254ScalarMulChip),
+    MemCopy32(memcpy::MemCopy32Chip),
+    MemCopy64(memcpy::MemCopy64Chip),
 }
 
 impl<F: PrimeField32> RiscvAir<F> {
@@ -248,6 +260,19 @@ impl<F: PrimeField32> RiscvAir<F> {
             Chip::new(RiscvAir::Bn254Fp2Mul(Fp2MulAssignChip::<Bn254BaseField>::new()));
         costs.insert(RiscvAirDiscriminants::Bn254Fp2Mul, bn254_fp2_mul.cost());
         chips.push(bn254_fp2_mul);
+
+        let bn254_scalar_mac = Chip::new(RiscvAir::Bn254ScalarMac(Bn254ScalarMacChip::new()));
+        costs.insert(RiscvAirDiscriminants::Bn254ScalarMac, bn254_scalar_mac.cost());
+        chips.push(bn254_scalar_mac);
+        let bn254_scalar_mul = Chip::new(RiscvAir::Bn254ScalarMul(Bn254ScalarMulChip::new()));
+        costs.insert(RiscvAirDiscriminants::Bn254ScalarMul, bn254_scalar_mul.cost());
+        chips.push(bn254_scalar_mul);
+        let mem_copy_32 = Chip::new(RiscvAir::MemCopy32(MemCopy32Chip::new()));
+        costs.insert(RiscvAirDiscriminants::MemCopy32, mem_copy_32.cost());
+        chips.push(mem_copy_32);
+        let mem_copy_64 = Chip::new(RiscvAir::MemCopy64(MemCopy64Chip::new()));
+        costs.insert(RiscvAirDiscriminants::MemCopy64, mem_copy_64.cost());
+        chips.push(mem_copy_64);
 
         let bls12381_decompress =
             Chip::new(RiscvAir::Bls12381Decompress(WeierstrassDecompressChip::<
