@@ -1938,6 +1938,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "enum-map"
+version = "2.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6866f3bfdf8207509a033af1a75a7b08abda06bbaaeae6669323fd5a097df2e9"
+dependencies = [
+ "enum-map-derive",
+ "serde",
+]
+
+[[package]]
+name = "enum-map-derive"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f282cfdfe92516eb26c2af8589c274c7c17681f5ecc03c18255fe741c6aa64eb"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.72",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3481,6 +3502,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 dependencies = [
  "value-bag",
+]
+
+[[package]]
+name = "lru"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37ee39891760e7d94734f6f63fedc29a2e4a152f836120753a72503f09fcf904"
+dependencies = [
+ "hashbrown 0.14.5",
 ]
 
 [[package]]
@@ -5964,6 +5994,7 @@ dependencies = [
  "bincode",
  "bytemuck",
  "elf",
+ "enum-map",
  "eyre",
  "generic-array 1.1.0",
  "hashbrown 0.14.5",
@@ -5990,6 +6021,7 @@ dependencies = [
  "tiny-keccak",
  "tracing",
  "typenum",
+ "vec_map",
 ]
 
 [[package]]
@@ -6170,6 +6202,7 @@ dependencies = [
  "dirs",
  "hex",
  "itertools 0.13.0",
+ "lru",
  "num-bigint 0.4.6",
  "oneshot",
  "p3-baby-bear",
@@ -6185,11 +6218,10 @@ dependencies = [
  "sp1-core-executor",
  "sp1-core-machine",
  "sp1-primitives",
- "sp1-recursion-circuit",
+ "sp1-recursion-circuit-v2",
  "sp1-recursion-compiler",
- "sp1-recursion-core",
+ "sp1-recursion-core-v2",
  "sp1-recursion-gnark-ffi",
- "sp1-recursion-program",
  "sp1-stark",
  "subtle-encoding",
  "tempfile",
@@ -6525,6 +6557,7 @@ dependencies = [
  "sp1-derive",
  "sp1-primitives",
  "sp1-zkvm",
+ "sysinfo",
  "tracing",
 ]
 
@@ -7447,6 +7480,9 @@ name = "vec_map"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "vergen"

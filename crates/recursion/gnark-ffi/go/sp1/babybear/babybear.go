@@ -50,7 +50,7 @@ func NewChip(api frontend.API) *Chip {
 func Zero() Variable {
 	return Variable{
 		Value:  frontend.Variable("0"),
-		NbBits: 0,
+		NbBits: 1,
 	}
 }
 
@@ -164,6 +164,12 @@ func (c *Chip) AssertIsEqualF(a, b Variable) {
 	a2 := c.ReduceSlow(a)
 	b2 := c.ReduceSlow(b)
 	c.api.AssertIsEqual(a2.Value, b2.Value)
+}
+
+func (c *Chip) AssertNotEqualF(a, b Variable) {
+	a2 := c.ReduceSlow(a)
+	b2 := c.ReduceSlow(b)
+	c.api.AssertIsDifferent(a2.Value, b2.Value)
 }
 
 func (c *Chip) AssertIsEqualE(a, b ExtensionVariable) {
@@ -294,6 +300,11 @@ func (c *Chip) DivE(a, b ExtensionVariable) ExtensionVariable {
 	return c.MulE(a, bInv)
 }
 
+func (c *Chip) DivEF(a ExtensionVariable, b Variable) ExtensionVariable {
+	bInv := c.invF(b)
+	return c.MulEF(a, bInv)
+}
+
 func (c *Chip) NegE(a ExtensionVariable) ExtensionVariable {
 	v1 := c.negF(a.Value[0])
 	v2 := c.negF(a.Value[1])
@@ -307,7 +318,7 @@ func (c *Chip) ToBinary(in Variable) []frontend.Variable {
 }
 
 func (p *Chip) reduceFast(x Variable) Variable {
-	if x.NbBits >= uint(126) {
+	if x.NbBits >= uint(120) {
 		return Variable{
 			Value:  p.reduceWithMaxBits(x.Value, uint64(x.NbBits)),
 			NbBits: 31,
@@ -338,11 +349,12 @@ func (p *Chip) reduceWithMaxBits(x frontend.Variable, maxNbBits uint64) frontend
 	quotient := result[0]
 	remainder := result[1]
 
-	if os.Getenv("GROTH16") != "1" {
-		p.RangeChecker.Check(quotient, int(maxNbBits-30))
-	} else {
-		p.api.ToBinary(quotient, int(maxNbBits-30))
-	}
+	// TODO: Fix before 1.3.0.
+	// if os.Getenv("GROTH16") != "1" {
+	// 	p.RangeChecker.Check(quotient, int(maxNbBits-30))
+	// } else {
+	// 	p.api.ToBinary(quotient, int(maxNbBits-30))
+	// }
 	// Check that the remainder has size less than the BabyBear modulus, by decomposing it into a 27
 	// bit limb and a 4 bit limb.
 	new_result, new_err := p.api.Compiler().NewHint(SplitLimbsHint, 2, remainder)
