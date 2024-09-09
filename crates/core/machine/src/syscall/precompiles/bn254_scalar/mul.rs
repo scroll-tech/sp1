@@ -22,7 +22,7 @@ use sp1_stark::air::SP1AirBuilder;
 
 use crate::air::MemoryAirBuilder;
 use crate::utils::limbs_from_prev_access;
-use crate::utils::pad_rows;
+use crate::utils::pad_rows_fixed;
 use crate::{
     memory::{MemoryCols, MemoryReadCols, MemoryWriteCols},
     operations::field::field_op::FieldOpCols,
@@ -119,15 +119,19 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
         }
         output.add_byte_lookup_events(new_byte_lookup_events);
 
-        pad_rows(&mut rows, || {
-            let mut row = [F::zero(); NUM_COLS];
-            let cols: &mut Bn254ScalarMulCols<F> = row.as_mut_slice().borrow_mut();
+        pad_rows_fixed(
+            &mut rows,
+            || {
+                let mut row = [F::zero(); NUM_COLS];
+                let cols: &mut Bn254ScalarMulCols<F> = row.as_mut_slice().borrow_mut();
 
-            let zero = BigUint::zero();
-            cols.eval.populate(&mut vec![], 0, 0, &zero, &zero, OP.to_field_operation());
+                let zero = BigUint::zero();
+                cols.eval.populate(&mut vec![], 0, 0, &zero, &zero, OP.to_field_operation());
 
-            row
-        });
+                row
+            },
+            input.fixed_log2_rows::<F, _>(self),
+        );
 
         let mut trace =
             RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_COLS);

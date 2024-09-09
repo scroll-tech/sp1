@@ -12,11 +12,11 @@ use serde::{Deserialize, Serialize};
 use super::{program::Program, Opcode};
 use crate::{
     events::{
-        add_sharded_byte_lookup_events, AluEvent, ByteLookupEvent, ByteRecord, CpuEvent,
-        EdDecompressEvent, EllipticCurveAddEvent, EllipticCurveDecompressEvent,
-        EllipticCurveDoubleEvent, Fp2AddSubEvent, Fp2MulEvent, FpOpEvent, KeccakPermuteEvent,
-        LookupId, MemoryInitializeFinalizeEvent, MemoryRecordEnum, ShaCompressEvent,
-        ShaExtendEvent, Uint256MulEvent,
+        add_sharded_byte_lookup_events, AluEvent, Bn254FieldArithEvent, ByteLookupEvent,
+        ByteRecord, CpuEvent, EdDecompressEvent, EllipticCurveAddEvent,
+        EllipticCurveDecompressEvent, EllipticCurveDoubleEvent, Fp2AddSubEvent, Fp2MulEvent,
+        FpOpEvent, KeccakPermuteEvent, LookupId, MemCopyEvent, MemoryInitializeFinalizeEvent,
+        MemoryRecordEnum, ShaCompressEvent, ShaExtendEvent, Uint256MulEvent,
     },
     shape::CoreShape,
 };

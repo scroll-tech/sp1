@@ -16,7 +16,8 @@ use sp1_derive::AlignedBorrow;
 
 use crate::air::MemoryAirBuilder;
 use crate::memory::{MemoryReadCols, MemoryWriteCols};
-use crate::utils::{limbs_from_access, limbs_from_prev_access, pad_rows};
+use crate::utils::pad_rows_fixed;
+use crate::utils::{limbs_from_access, limbs_from_prev_access};
 
 #[derive(Debug, Clone, AlignedBorrow)]
 #[repr(C)]
@@ -119,7 +120,11 @@ impl<F: PrimeField32, NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength
         }
         output.add_byte_lookup_events(new_byte_lookup_events);
 
-        pad_rows(&mut rows, || vec![F::zero(); Self::NUM_COLS]);
+        pad_rows_fixed(
+            &mut rows,
+            || vec![F::zero(); Self::NUM_COLS],
+            input.fixed_log2_rows::<F, _>(self),
+        );
 
         let mut trace =
             RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), Self::NUM_COLS);
