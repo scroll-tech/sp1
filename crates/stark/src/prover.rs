@@ -28,6 +28,7 @@ use crate::{
 pub struct MergedProverDataItem<'a, M> {
     /// The trace.
     pub trace: &'a M,
+    /// The main data index.
     pub main_data_idx: usize,
 }
 
@@ -84,7 +85,6 @@ pub trait MachineProver<SC: StarkGenericConfig, A: MachineAir<SC::Val>>:
                         chip_name,
                         begin.elapsed()
                     );
-
                     (chip_name, trace)
                 })
                 .collect::<Vec<_>>()
