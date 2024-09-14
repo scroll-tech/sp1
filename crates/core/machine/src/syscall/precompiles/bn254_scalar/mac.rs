@@ -9,6 +9,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use sp1_core_executor::events::Bn254FieldOperation;
 use sp1_core_executor::events::ByteRecord;
 use sp1_core_executor::events::FieldOperation;
+use sp1_core_executor::events::PrecompileEvent;
 use sp1_core_executor::events::NUM_WORDS_PER_FE;
 use sp1_core_executor::syscalls::SyscallCode;
 use sp1_core_executor::ExecutionRecord;
@@ -18,6 +19,7 @@ use sp1_curves::params::Limbs;
 use sp1_curves::params::NumLimbs;
 use sp1_curves::weierstrass::bn254::Bn254ScalarField;
 use sp1_derive::AlignedBorrow;
+use sp1_stark::air::InteractionScope;
 use sp1_stark::air::MachineAir;
 use sp1_stark::air::SP1AirBuilder;
 use typenum::U8;
@@ -69,10 +71,17 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
     }
 
     fn generate_trace(&self, input: &Self::Record, output: &mut Self::Record) -> RowMajorMatrix<F> {
+        let events = input.get_precompile_events(SyscallCode::BN254_SCALAR_MAC);
+
         let mut rows = vec![];
         let mut new_byte_lookup_events = vec![];
 
-        for event in input.bn254_scalar_mac_events.iter().filter(|e| e.op == OP) {
+        for event in events {
+            let event = if let PrecompileEvent::Bn254ScalarMac(event) = event {
+                event
+            } else {
+                unreachable!();
+            };
             let mut row = [F::zero(); NUM_COLS];
             let cols: &mut Bn254ScalarMacCols<F> = row.as_mut_slice().borrow_mut();
 
@@ -82,7 +91,6 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
 
             cols.is_real = F::one();
             cols.shard = F::from_canonical_u32(event.shard);
-            cols.channel = F::from_canonical_u8(event.channel);
             cols.clk = F::from_canonical_u32(event.clk);
             cols.arg1_ptr = F::from_canonical_u32(event.arg1.ptr);
             cols.arg2_ptr = F::from_canonical_u32(event.arg2.ptr);
@@ -100,7 +108,6 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
             let mul = cols.mul_eval.populate(
                 &mut new_byte_lookup_events,
                 event.shard,
-                event.channel,
                 &a,
                 &b,
                 FieldOperation::Mul,
@@ -108,36 +115,27 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
             cols.add_eval.populate(
                 &mut new_byte_lookup_events,
                 event.shard,
-                event.channel,
                 &arg1,
                 &mul,
                 FieldOperation::Add,
             );
 
             for i in 0..cols.arg1_access.len() {
-                cols.arg1_access[i].populate(
-                    event.channel,
-                    event.arg1.memory_records[i],
-                    &mut new_byte_lookup_events,
-                );
+                cols.arg1_access[i]
+                    .populate(event.arg1.memory_records[i], &mut new_byte_lookup_events);
             }
             for i in 0..cols.arg2_access.len() {
-                cols.arg2_access[i].populate(
-                    event.channel,
-                    event.arg2.memory_records[i],
-                    &mut new_byte_lookup_events,
-                );
+                cols.arg2_access[i]
+                    .populate(event.arg2.memory_records[i], &mut new_byte_lookup_events);
             }
             for i in 0..cols.a_access.len() {
                 cols.a_access[i].populate(
-                    event.channel,
                     event.a.as_ref().unwrap().memory_records[i],
                     &mut new_byte_lookup_events,
                 );
             }
             for i in 0..cols.b_access.len() {
                 cols.b_access[i].populate(
-                    event.channel,
                     event.b.as_ref().unwrap().memory_records[i],
                     &mut new_byte_lookup_events,
                 );
@@ -154,8 +152,8 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
                 let cols: &mut Bn254ScalarMacCols<F> = row.as_mut_slice().borrow_mut();
 
                 let zero = BigUint::zero();
-                cols.mul_eval.populate(&mut vec![], 0, 0, &zero, &zero, FieldOperation::Mul);
-                cols.add_eval.populate(&mut vec![], 0, 0, &zero, &zero, FieldOperation::Add);
+                cols.mul_eval.populate(&mut vec![], 0, &zero, &zero, FieldOperation::Mul);
+                cols.add_eval.populate(&mut vec![], 0, &zero, &zero, FieldOperation::Add);
 
                 row
             },
@@ -175,7 +173,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
-        shard.bn254_scalar_mac_events.iter().filter(|e| e.op == OP).count() != 0
+        !shard.get_precompile_events(SyscallCode::BN254_SCALAR_MAC).is_empty()
     }
 }
 
@@ -204,24 +202,8 @@ where
         let b: Limbs<<AB as AirBuilder>::Var, <Bn254ScalarField as NumLimbs>::Limbs> =
             limbs_from_prev_access(&row.b_access);
 
-        row.mul_eval.eval(
-            builder,
-            &a,
-            &b,
-            FieldOperation::Mul,
-            row.shard,
-            row.channel,
-            row.is_real,
-        );
-        row.add_eval.eval(
-            builder,
-            &arg1,
-            &row.mul_eval.result,
-            FieldOperation::Add,
-            row.shard,
-            row.channel,
-            row.is_real,
-        );
+        row.mul_eval.eval(builder, &a, &b, FieldOperation::Mul, row.is_real);
+        row.add_eval.eval(builder, &arg1, &row.mul_eval.result, FieldOperation::Add, row.is_real);
 
         for i in 0..Bn254ScalarField::NB_LIMBS {
             builder
@@ -231,7 +213,6 @@ where
 
         builder.eval_memory_access_slice(
             row.shard,
-            row.channel,
             row.clk.into(),
             row.arg1_ptr,
             &row.arg1_access,
@@ -240,7 +221,6 @@ where
 
         builder.eval_memory_access_slice(
             row.shard,
-            row.channel,
             row.clk.into(),
             row.arg2_ptr,
             &row.arg2_access,
@@ -263,7 +243,6 @@ where
 
         builder.eval_memory_access_slice(
             row.shard,
-            row.channel,
             row.clk.into(),
             a_ptr,
             &row.a_access,
@@ -272,7 +251,6 @@ where
 
         builder.eval_memory_access_slice(
             row.shard,
-            row.channel,
             row.clk.into(),
             b_ptr,
             &row.b_access,
@@ -282,13 +260,13 @@ where
         let syscall_id = AB::F::from_canonical_u32(SyscallCode::BN254_SCALAR_MAC.syscall_id());
         builder.receive_syscall(
             row.shard,
-            row.channel,
             row.clk,
             row.nonce,
             syscall_id,
             row.arg1_ptr,
             row.arg2_ptr,
             row.is_real,
+            InteractionScope::Global,
         );
     }
 }

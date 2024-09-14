@@ -59,11 +59,6 @@ pub struct ExecutionRecord {
     /// A trace of all the syscall events.
     pub syscall_events: Vec<SyscallEvent>,
 
-    pub bn254_scalar_mul_events: Vec<Bn254FieldArithEvent>,
-    pub bn254_scalar_mac_events: Vec<Bn254FieldArithEvent>,
-    pub memcpy32_events: Vec<MemCopyEvent>,
-    pub memcpy64_events: Vec<MemCopyEvent>,
-
     /// The public values.
     pub public_values: PublicValues<u32, u32>,
     /// The nonce lookup.
@@ -134,10 +129,6 @@ impl ExecutionRecord {
         execution_record.global_memory_finalize_events =
             std::mem::take(&mut self.global_memory_finalize_events);
         execution_record
-            bn254_scalar_mul_events: std::mem::take(&mut self.bn254_scalar_mul_events),
-            bn254_scalar_mac_events: std::mem::take(&mut self.bn254_scalar_mac_events),
-            memcpy32_events: std::mem::take(&mut self.memcpy32_events),
-            memcpy64_events: std::mem::take(&mut self.memcpy64_events),
     }
 
     /// Splits the deferred [`ExecutionRecord`] into multiple [`ExecutionRecord`]s, each which
@@ -176,10 +167,6 @@ impl ExecutionRecord {
             shards.append(&mut event_shards);
         }
 
-        split_events!(self, memcpy32_events, shards, opts.deferred, last);
-        split_events!(self, memcpy64_events, shards, opts.deferred, last);
-        split_events!(self, bn254_scalar_mul_events, shards, opts.deferred, last);
-        split_events!(self, bn254_scalar_mac_events, shards, opts.deferred, last);
         // _ = last_pct;
 
         if last {
@@ -320,12 +307,6 @@ impl MachineRecord for ExecutionRecord {
         );
         stats.insert("local_memory_access_events".to_string(), self.cpu_local_memory_access.len());
 
-        stats.insert("bn254_scalar_mul_events".to_string(), self.bn254_scalar_mul_events.len());
-        stats.insert("bn254_scalar_mac_events".to_string(), self.bn254_scalar_mac_events.len());
-
-        stats.insert("memcpy32_events".to_string(), self.memcpy32_events.len());
-        stats.insert("memcpy64_events".to_string(), self.memcpy64_events.len());
-
         if !self.cpu_events.is_empty() {
             let shard = self.cpu_events[0].shard;
             stats.insert(
@@ -351,11 +332,6 @@ impl MachineRecord for ExecutionRecord {
         self.syscall_events.append(&mut other.syscall_events);
 
         self.precompile_events.append(&mut other.precompile_events);
-        self.bn254_scalar_mul_events.append(&mut other.bn254_scalar_mul_events);
-        self.bn254_scalar_mac_events.append(&mut other.bn254_scalar_mac_events);
-        self.memcpy32_events.append(&mut other.memcpy32_events);
-        self.memcpy64_events.append(&mut other.memcpy64_events);
-
 
         if self.byte_lookups.is_empty() {
             self.byte_lookups = std::mem::take(&mut other.byte_lookups);
@@ -400,35 +376,6 @@ impl MachineRecord for ExecutionRecord {
         self.lt_events.iter().enumerate().for_each(|(i, event)| {
             self.nonce_lookup.insert(event.lookup_id, i as u32);
         });
-
-        /*
-                self.memcpy32_events
-                    .iter()
-                    .enumerate()
-                    .for_each(|(i, event)| {
-                        self.nonce_lookup.insert(event.lookup_id, i as u32);
-                    });
-
-                self.memcpy64_events
-                    .iter()
-                    .enumerate()
-                    .for_each(|(i, event)| {
-                        self.nonce_lookup.insert(event.lookup_id, i as u32);
-                    });
-
-                self.bn254_scalar_mul_events
-                    .iter()
-                    .enumerate()
-                    .for_each(|(i, event)| {
-                        self.nonce_lookup.insert(event.lookup_id, i as u32);
-                    });
-                self.bn254_scalar_mac_events
-                    .iter()
-                    .enumerate()
-                    .for_each(|(i, event)| {
-                        self.nonce_lookup.insert(event.lookup_id, i as u32);
-                    });
-        */
     }
 
     /// Retrieves the public values.  This method is needed for the `MachineRecord` trait, since

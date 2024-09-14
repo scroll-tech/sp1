@@ -1,9 +1,11 @@
 use generic_array::{ArrayLength, GenericArray};
 use sp1_core_executor::events::ByteRecord;
 use sp1_core_executor::events::MemCopyEvent;
+use sp1_core_executor::events::PrecompileEvent;
 use sp1_core_executor::syscalls::{Syscall, SyscallCode, SyscallContext};
 use sp1_core_executor::{ExecutionRecord, Program};
 use sp1_curves::params::Limbs;
+use sp1_stark::air::InteractionScope;
 use sp1_stark::air::{MachineAir, SP1AirBuilder};
 use std::borrow::{Borrow, BorrowMut};
 use std::marker::PhantomData;
@@ -74,19 +76,35 @@ impl<F: PrimeField32, NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength
         let mut rows = vec![];
         let mut new_byte_lookup_events = vec![];
         let events = match NumWords::USIZE {
-            8 => &input.memcpy32_events,
-            16 => &input.memcpy64_events,
+            8 => input.get_precompile_events(SyscallCode::MEMCPY_32),
+            16 => input.get_precompile_events(SyscallCode::MEMCPY_64),
             _ => unreachable!(),
         };
 
         for event in events {
+            let event: &MemCopyEvent = match NumWords::USIZE {
+                8 => {
+                    if let PrecompileEvent::MemCopy32(event) = event {
+                        event
+                    } else {
+                        unreachable!();
+                    }
+                }
+                16 => {
+                    if let PrecompileEvent::MemCopy64(event) = event {
+                        event
+                    } else {
+                        unreachable!();
+                    }
+                }
+                _ => unreachable!(),
+            };
             let mut row = Vec::with_capacity(Self::NUM_COLS);
             row.resize(Self::NUM_COLS, F::zero());
             let cols: &mut MemCopyCols<F, NumWords> = row.as_mut_slice().borrow_mut();
 
             cols.is_real = F::one();
             cols.shard = F::from_canonical_u32(event.shard);
-            cols.channel = F::from_canonical_u8(event.channel);
             cols.clk = F::from_canonical_u32(event.clk);
             cols.src_ptr = F::from_canonical_u32(event.src_ptr);
             cols.dst_ptr = F::from_canonical_u32(event.dst_ptr);
@@ -102,18 +120,10 @@ impl<F: PrimeField32, NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength
             */
 
             for i in 0..NumWords::USIZE {
-                cols.src_access[i].populate(
-                    event.channel,
-                    event.read_records[i],
-                    &mut new_byte_lookup_events,
-                );
+                cols.src_access[i].populate(event.read_records[i], &mut new_byte_lookup_events);
             }
             for i in 0..NumWords::USIZE {
-                cols.dst_access[i].populate(
-                    event.channel,
-                    event.write_records[i],
-                    &mut new_byte_lookup_events,
-                );
+                cols.dst_access[i].populate(event.write_records[i], &mut new_byte_lookup_events);
             }
 
             rows.push(row);
@@ -138,12 +148,11 @@ impl<F: PrimeField32, NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength
     }
 
     fn included(&self, shard: &Self::Record) -> bool {
-        !(match NumWords::USIZE {
-            8 => &shard.memcpy32_events,
-            16 => &shard.memcpy64_events,
+        match NumWords::USIZE {
+            8 => !shard.get_precompile_events(SyscallCode::MEMCPY_32).is_empty(),
+            16 => !shard.get_precompile_events(SyscallCode::MEMCPY_64).is_empty(),
             _ => unreachable!(),
-        })
-        .is_empty()
+        }
     }
 }
 
@@ -170,7 +179,6 @@ impl<AB: SP1AirBuilder, NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sy
 
         builder.eval_memory_access_slice(
             row.shard,
-            row.channel,
             row.clk.into(),
             row.src_ptr,
             &row.src_access,
@@ -178,7 +186,6 @@ impl<AB: SP1AirBuilder, NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sy
         );
         builder.eval_memory_access_slice(
             row.shard,
-            row.channel,
             row.clk.into(),
             row.dst_ptr,
             &row.dst_access,
@@ -187,13 +194,13 @@ impl<AB: SP1AirBuilder, NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sy
 
         builder.receive_syscall(
             row.shard,
-            row.channel,
             row.clk,
             row.nonce,
             AB::F::from_canonical_u32(Self::syscall_id()),
             row.src_ptr,
             row.dst_ptr,
             row.is_real,
+            InteractionScope::Global,
         );
     }
 }

@@ -5,7 +5,7 @@ use crate::{
     syscall::{
         memcpy::{self, MemCopy32Chip, MemCopy64Chip, MemCopyChip},
         precompiles::{
-            bn254_scalar::{self, Bn254ScalarMacChip},
+            bn254_scalar::{self, Bn254ScalarMacChip, Bn254ScalarMulChip},
             fptower::{Fp2AddSubAssignChip, Fp2MulAssignChip, FpOpChip},
         },
     },

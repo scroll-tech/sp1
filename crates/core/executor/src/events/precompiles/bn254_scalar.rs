@@ -1,10 +1,3 @@
-/*
-use crate::{
-    operations::field::params::{FieldParameters, NumWords},
-    operations::field::{field_op::FieldOperation, params::Limbs},
-    runtime::{MemoryReadRecord, MemoryWriteRecord, SyscallContext},
-};
-*/
 use num::BigUint;
 use sp1_curves::{
     params::{FieldParameters, NumWords},
@@ -15,7 +8,7 @@ use typenum::Unsigned;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    events::{LookupId, MemoryReadRecord, MemoryWriteRecord},
+    events::{LookupId, MemoryLocalEvent, MemoryReadRecord, MemoryWriteRecord},
     syscalls::SyscallContext,
 };
 
@@ -23,8 +16,10 @@ use super::FieldOperation;
 
 pub const NUM_WORDS_PER_FE: usize = 8;
 
-#[derive(PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum Bn254FieldOperation {
+    #[default]
+    Invalid = 0,
     Mul = 2,
     Mac = 4,
 }
@@ -34,21 +29,23 @@ impl Bn254FieldOperation {
         match self {
             Bn254FieldOperation::Mul => FieldOperation::Mul,
             Bn254FieldOperation::Mac => panic!("not supported"),
+            Bn254FieldOperation::Invalid => panic!("what??"),
         }
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Bn254FieldArithEvent {
     pub lookup_id: LookupId,
     pub shard: u32,
-    pub channel: u8,
     pub clk: u32,
     pub op: Bn254FieldOperation,
     pub arg1: FieldArithMemoryAccess<MemoryWriteRecord>,
     pub arg2: FieldArithMemoryAccess<MemoryReadRecord>,
     pub a: Option<FieldArithMemoryAccess<MemoryReadRecord>>,
     pub b: Option<FieldArithMemoryAccess<MemoryReadRecord>>,
+    /// The local memory access records.
+    pub local_mem_access: Vec<MemoryLocalEvent>,
 }
 
 pub fn create_bn254_scalar_arith_event(
@@ -117,17 +114,17 @@ pub fn create_bn254_scalar_arith_event(
     Bn254FieldArithEvent {
         lookup_id: rt.syscall_lookup_id,
         shard,
-        channel: rt.current_channel(),
         clk: start_clk,
         op,
         arg1,
         arg2,
         a,
         b,
+        local_mem_access: rt.postprocess(),
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct FieldArithMemoryAccess<T> {
     pub ptr: u32,
     pub memory_records: Vec<T>,

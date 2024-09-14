@@ -20,7 +20,7 @@ pub use sha256_extend::*;
 use strum::EnumIter;
 pub use uint256::*;
 
-use super::MemoryLocalEvent;
+use super::{MemCopyEvent, MemoryLocalEvent};
 
 #[derive(Clone, Debug, Serialize, Deserialize, EnumIter)]
 /// Precompile event.  There should be one variant for every precompile syscall.
@@ -39,6 +39,10 @@ pub enum PrecompileEvent {
     Bn254Fp(FpOpEvent),
     Bn254Fp2AddSub(Fp2AddSubEvent),
     Bn254Fp2Mul(Fp2MulEvent),
+    Bn254ScalarMac(Bn254FieldArithEvent),
+    Bn254ScalarMul(Bn254FieldArithEvent),
+    MemCopy32(MemCopyEvent),
+    MemCopy64(MemCopyEvent),
     Bls12381Add(EllipticCurveAddEvent),
     Bls12381Double(EllipticCurveDoubleEvent),
     Bls12381Decompress(EllipticCurveDecompressEvent),
@@ -96,6 +100,12 @@ impl PrecompileLocalMemory for Vec<PrecompileEvent> {
                     iterators.push(e.local_mem_access.iter());
                 }
                 PrecompileEvent::Bls12381Fp2Mul(e) | PrecompileEvent::Bn254Fp2Mul(e) => {
+                    iterators.push(e.local_mem_access.iter());
+                }
+                PrecompileEvent::Bn254ScalarMac(e) | PrecompileEvent::Bn254ScalarMul(e) => {
+                    iterators.push(e.local_mem_access.iter());
+                }
+                PrecompileEvent::MemCopy32(e) | PrecompileEvent::MemCopy64(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
             }
