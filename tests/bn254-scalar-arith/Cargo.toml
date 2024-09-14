@@ -1,9 +1,0 @@
-[workspace]
-[package]
-version = "0.1.0"
-name = "bn254-scalar-arith-test"
-edition = "2021"
-
-[dependencies]
-sp1-zkvm = { path = "../../zkvm/entrypoint" }
-num = { version = "0.4.1", default-features = false }
