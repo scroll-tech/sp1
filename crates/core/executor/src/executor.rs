@@ -770,6 +770,10 @@ impl<'a> Executor<'a> {
                 let value = (memory_read_value).to_le_bytes()[(addr % 4) as usize];
                 a = ((value as i8) as i32) as u32;
                 memory_store_value = Some(memory_read_value);
+                //println!(
+                //    "[clk: {}, pc: 0x{:x}] LB: {:?} <- {:x}",
+                //    self.state.global_clk, self.state.pc, rd, a
+                //);
                 self.rw(rd, a);
             }
             Opcode::LH => {
@@ -784,6 +788,10 @@ impl<'a> Executor<'a> {
                 };
                 a = ((value as i16) as i32) as u32;
                 memory_store_value = Some(memory_read_value);
+                //println!(
+                //    "[clk: {}, pc: 0x{:x}] LH: {:?} <- {:x}",
+                //    self.state.global_clk, self.state.pc, rd, a
+                //);
                 self.rw(rd, a);
             }
             Opcode::LW => {
@@ -793,6 +801,10 @@ impl<'a> Executor<'a> {
                 }
                 a = memory_read_value;
                 memory_store_value = Some(memory_read_value);
+                //println!(
+                //    "[clk: {}, pc: 0x{:x}] LW: {:?} <- {}",
+                //    self.state.global_clk, self.state.pc, rd, a
+                //);
                 self.rw(rd, a);
             }
             Opcode::LBU => {
@@ -828,6 +840,10 @@ impl<'a> Executor<'a> {
                     _ => unreachable!(),
                 };
                 memory_store_value = Some(value);
+                //println!(
+                //    "[clk: {}, pc: 0x{:x}] SB 0x{:x} <- 0x{:x}",
+                //    self.state.global_clk, pc, addr, value
+                //);
                 self.mw_cpu(align(addr), value, MemoryAccessPosition::Memory);
             }
             Opcode::SH => {
@@ -841,6 +857,10 @@ impl<'a> Executor<'a> {
                     _ => unreachable!(),
                 };
                 memory_store_value = Some(value);
+                //println!(
+                //    "[clk: {}, pc: 0x{:x}] SH 0x{:x} <- 0x{:x}",
+                //    self.state.global_clk, pc, addr, value
+                //);
                 self.mw_cpu(align(addr), value, MemoryAccessPosition::Memory);
             }
             Opcode::SW => {
@@ -850,6 +870,10 @@ impl<'a> Executor<'a> {
                 }
                 let value = a;
                 memory_store_value = Some(value);
+                //println!(
+                //    "[clk: {}, pc: 0x{:x}] SW 0x{:x} <- 0x{:x}",
+                //    self.state.global_clk, pc, addr, value
+                //);
                 self.mw_cpu(align(addr), value, MemoryAccessPosition::Memory);
             }
 
@@ -941,9 +965,18 @@ impl<'a> Executor<'a> {
                     return Err(ExecutionError::InvalidSyscallUsage(syscall_id as u64));
                 }
 
+                let global_clk = self.state.global_clk;
                 let syscall_impl = self.get_syscall(syscall).cloned();
                 let mut precompile_rt = SyscallContext::new(self);
                 precompile_rt.syscall_lookup_id = syscall_lookup_id;
+                log::trace!(
+                    "[clk: {}, pc: 0x{:x}] ecall syscall_id=0x{:x}, b: 0x{:x}, c: 0x{:x}",
+                    global_clk,
+                    pc,
+                    syscall_id,
+                    b,
+                    c,
+                );
                 let (precompile_next_pc, precompile_cycles, returned_exit_code) =
                     if let Some(syscall_impl) = syscall_impl {
                         // Executing a syscall optionally returns a value to write to the t0
@@ -991,7 +1024,20 @@ impl<'a> Executor<'a> {
                     _ => (self.opts.split_opts.deferred, 1),
                 };
                 let nonce = (((*syscall_count as usize) % threshold) * multiplier) as u32;
-                self.record.nonce_lookup.insert(syscall_lookup_id, nonce);
+                // FIXME
+                match syscall {
+                    SyscallCode::BN254_SCALAR_MAC
+                    | SyscallCode::BN254_SCALAR_MUL
+                    | SyscallCode::MEMCPY_32
+                    | SyscallCode::MEMCPY_64 => {}
+                    _ => {
+                        self.record.nonce_lookup.insert(syscall_lookup_id, nonce);
+                    }
+                }
+
+                //log::info!(
+                //    "execute_instruction {syscall:?} {syscall_count} {nonce} {syscall_lookup_id}"
+                //);
                 *syscall_count += 1;
             }
             Opcode::EBREAK => {

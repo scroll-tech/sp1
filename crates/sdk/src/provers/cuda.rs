@@ -41,7 +41,7 @@ impl Prover<DefaultProverComponents> for CudaProver {
         &'a self,
         pk: &SP1ProvingKey,
         stdin: SP1Stdin,
-        _opts: ProofOpts,
+        opts: ProofOpts,
         _context: SP1Context<'a>,
         kind: SP1ProofKind,
     ) -> Result<SP1ProofWithPublicValues> {
@@ -73,10 +73,10 @@ impl Prover<DefaultProverComponents> for CudaProver {
         }
 
         // Generate the shrink proof.
-        let compress_proof = self.cuda_prover.shrink(reduce_proof)?;
+        let compress_proof = self.prover.shrink(reduce_proof, opts.sp1_prover_opts)?;
 
         // Genenerate the wrap proof.
-        let outer_proof = self.cuda_prover.wrap_bn254(compress_proof)?;
+        let outer_proof = self.prover.wrap_bn254(compress_proof, opts.sp1_prover_opts)?;
 
         let plonk_bn254_aritfacts = if sp1_prover::build::sp1_dev_mode() {
             sp1_prover::build::try_build_plonk_bn254_artifacts_dev(
