@@ -57,7 +57,6 @@ pub struct ExecutionRecord {
     pub cpu_local_memory_access: Vec<MemoryLocalEvent>,
     /// A trace of all the syscall events.
     pub syscall_events: Vec<SyscallEvent>,
-
     /// The public values.
     pub public_values: PublicValues<u32, u32>,
     /// The nonce lookup.
@@ -165,7 +164,6 @@ impl ExecutionRecord {
                 .collect::<Vec<_>>();
             shards.append(&mut event_shards);
         }
-
         // _ = last_pct;
 
         if last {
@@ -216,15 +214,19 @@ impl ExecutionRecord {
     /// Return the number of rows needed for a chip, according to the proof shape specified in the
     /// struct.
     pub fn fixed_log2_rows<F: PrimeField, A: MachineAir<F>>(&self, air: &A) -> Option<usize> {
-        self.shape
-            .as_ref()
-            .map(|shape| {
-                shape
-                    .shape
-                    .get(&air.name())
-                    .unwrap_or_else(|| panic!("Chip {} not found in specified shape", air.name()))
-            })
-            .copied()
+        self.shape.as_ref().and_then(|shape| {
+            let log2_rows = shape.inner.get(&air.name()).copied();
+            if log2_rows.is_none() {
+                tracing::warn!("Chip {} not found in specified shape", air.name());
+            }
+            log2_rows
+        })
+    }
+
+    /// Determines whether the execution record contains CPU events.
+    #[must_use]
+    pub fn contains_cpu(&self) -> bool {
+        !self.cpu_events.is_empty()
     }
 
     #[inline]
@@ -246,6 +248,7 @@ impl ExecutionRecord {
         let precompile_local_mem_events = self.precompile_events.get_local_mem_events();
         precompile_local_mem_events.chain(self.cpu_local_memory_access.iter())
     }
+
 }
 
 /// A memory access record.
@@ -289,7 +292,6 @@ impl MachineRecord for ExecutionRecord {
             self.global_memory_finalize_events.len(),
         );
         stats.insert("local_memory_access_events".to_string(), self.cpu_local_memory_access.len());
-
         if !self.cpu_events.is_empty() {
             let shard = self.cpu_events[0].shard;
             stats.insert(

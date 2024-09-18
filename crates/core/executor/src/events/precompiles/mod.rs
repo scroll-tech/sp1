@@ -25,7 +25,6 @@ use crate::syscalls::SyscallCode;
 
 use super::{MemCopyEvent, MemoryLocalEvent};
 
-
 #[derive(Clone, Debug, Serialize, Deserialize, EnumIter)]
 /// Precompile event.  There should be one variant for every precompile syscall.
 pub enum PrecompileEvent {
@@ -57,12 +56,12 @@ pub enum PrecompileEvent {
     Bn254Fp2AddSub(Fp2AddSubEvent),
     /// Bn254 quadratic field mul precompile event.
     Bn254Fp2Mul(Fp2MulEvent),
-    
+
     Bn254ScalarMac(Bn254FieldArithEvent),
     Bn254ScalarMul(Bn254FieldArithEvent),
     MemCopy32(MemCopyEvent),
     MemCopy64(MemCopyEvent),
-    
+
     /// Bls12-381 curve add precompile event.
     Bls12381Add(EllipticCurveAddEvent),
     /// Bls12-381 curve double precompile event.
