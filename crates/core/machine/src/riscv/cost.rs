@@ -1,7 +1,7 @@
 use p3_baby_bear::BabyBear;
 use sp1_core_executor::{syscalls::SyscallCode, ExecutionReport, Opcode};
 
-use crate::riscv::RiscvAirDiscriminants;
+use crate::{riscv::RiscvAirDiscriminants, syscall::precompiles::bn254_scalar};
 
 use super::RiscvAir;
 
@@ -120,6 +120,24 @@ impl CostEstimator for ExecutionReport {
 
         let bn254_fp2_mul_events = self.syscall_counts[SyscallCode::BN254_FP2_MUL];
         total_area += (bn254_fp2_mul_events as u64) * costs[&RiscvAirDiscriminants::Bn254Fp2Mul];
+        total_chips += 1;
+
+        let bn254_scalar_mul_events = self.syscall_counts[SyscallCode::BN254_SCALAR_MUL];
+        total_area +=
+            (bn254_scalar_mul_events as u64) * costs[&RiscvAirDiscriminants::Bn254ScalarMul];
+        total_chips += 1;
+
+        let bn254_scalar_mac_events = self.syscall_counts[SyscallCode::BN254_SCALAR_MAC];
+        total_area +=
+            (bn254_scalar_mac_events as u64) * costs[&RiscvAirDiscriminants::Bn254ScalarMac];
+        total_chips += 1;
+
+        let mem_copy_32_events = self.syscall_counts[SyscallCode::MEMCPY_32];
+        total_area += (mem_copy_32_events as u64) * costs[&RiscvAirDiscriminants::MemCopy32];
+        total_chips += 1;
+
+        let mem_copy_64_events = self.syscall_counts[SyscallCode::MEMCPY_64];
+        total_area += (mem_copy_64_events as u64) * costs[&RiscvAirDiscriminants::MemCopy64];
         total_chips += 1;
 
         let bls12381_decompress_events = self.syscall_counts[SyscallCode::BLS12381_DECOMPRESS];

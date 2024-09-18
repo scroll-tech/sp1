@@ -94,10 +94,10 @@ pub enum SyscallCode {
     BLS12381_DOUBLE = 0x00_00_01_1F,
 
     /// Executes the `BLS12381_FP_ADD` precompile.
-    BLS12381_FP_ADD = 0x00_01_01_20,
+    BLS12381_FP_ADD = 0x00_01_01_40,
 
     /// Executes the `BLS12381_FP_SUB` precompile.
-    BLS12381_FP_SUB = 0x00_01_01_21,
+    BLS12381_FP_SUB = 0x00_01_01_41,
 
     /// Executes the `BLS12381_FP_MUL` precompile.
     BLS12381_FP_MUL = 0x00_01_01_22,
@@ -128,6 +128,15 @@ pub enum SyscallCode {
 
     /// Executes the `BN254_FP2_MUL` precompile.
     BN254_FP2_MUL = 0x00_01_01_2B,
+
+    /// Execute the `MEMCPY_32` precompile.
+    MEMCPY_32 = 0x00_00_01_30,
+    /// Execute the `MEMCPY_64` precompile.
+    MEMCPY_64 = 0x00_00_01_31,
+    /// Execute the `BN254_SCALAR_MUL` precompile.
+    BN254_SCALAR_MUL = 0x00_01_01_20,
+    /// Execute the `BN254_SCALAR_MAC` precompile.
+    BN254_SCALAR_MAC = 0x00_01_01_21,
 }
 
 impl SyscallCode {
@@ -157,8 +166,8 @@ impl SyscallCode {
             0x00_00_00_F0 => SyscallCode::HINT_LEN,
             0x00_00_00_F1 => SyscallCode::HINT_READ,
             0x00_01_01_1D => SyscallCode::UINT256_MUL,
-            0x00_01_01_20 => SyscallCode::BLS12381_FP_ADD,
-            0x00_01_01_21 => SyscallCode::BLS12381_FP_SUB,
+            0x00_01_01_40 => SyscallCode::BLS12381_FP_ADD,
+            0x00_01_01_41 => SyscallCode::BLS12381_FP_SUB,
             0x00_01_01_22 => SyscallCode::BLS12381_FP_MUL,
             0x00_01_01_23 => SyscallCode::BLS12381_FP2_ADD,
             0x00_01_01_24 => SyscallCode::BLS12381_FP2_SUB,
@@ -170,6 +179,10 @@ impl SyscallCode {
             0x00_01_01_2A => SyscallCode::BN254_FP2_SUB,
             0x00_01_01_2B => SyscallCode::BN254_FP2_MUL,
             0x00_00_01_1C => SyscallCode::BLS12381_DECOMPRESS,
+            0x00_00_01_30 => SyscallCode::MEMCPY_32,
+            0x00_00_01_31 => SyscallCode::MEMCPY_64,
+            0x00_01_01_20 => SyscallCode::BN254_SCALAR_MUL,
+            0x00_01_01_21 => SyscallCode::BN254_SCALAR_MAC,
             _ => panic!("invalid syscall number: {value}"),
         }
     }

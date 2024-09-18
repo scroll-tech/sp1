@@ -1,3 +1,4 @@
+pub mod bn254_scalar;
 pub mod edwards;
 pub mod fptower;
 pub mod keccak256;
