@@ -122,23 +122,21 @@ impl CostEstimator for ExecutionReport {
         total_area += (bn254_fp2_mul_events as u64) * costs[&RiscvAirDiscriminants::Bn254Fp2Mul];
         total_chips += 1;
 
-        let bn254_scalar_mul_events =
-            *self.syscall_counts.get(&SyscallCode::BN254_SCALAR_MUL).unwrap_or(&0);
+        let bn254_scalar_mul_events = self.syscall_counts[SyscallCode::BN254_SCALAR_MUL];
         total_area +=
             (bn254_scalar_mul_events as u64) * costs[&RiscvAirDiscriminants::Bn254ScalarMul];
         total_chips += 1;
 
-        let bn254_scalar_mac_events =
-            *self.syscall_counts.get(&SyscallCode::BN254_SCALAR_MAC).unwrap_or(&0);
+        let bn254_scalar_mac_events = self.syscall_counts[SyscallCode::BN254_SCALAR_MAC];
         total_area +=
             (bn254_scalar_mac_events as u64) * costs[&RiscvAirDiscriminants::Bn254ScalarMac];
         total_chips += 1;
 
-        let mem_copy_32_events = *self.syscall_counts.get(&SyscallCode::MEMCPY_32).unwrap_or(&0);
+        let mem_copy_32_events = self.syscall_counts[SyscallCode::MEMCPY_32];
         total_area += (mem_copy_32_events as u64) * costs[&RiscvAirDiscriminants::MemCopy32];
         total_chips += 1;
 
-        let mem_copy_64_events = *self.syscall_counts.get(&SyscallCode::MEMCPY_64).unwrap_or(&0);
+        let mem_copy_64_events = self.syscall_counts[SyscallCode::MEMCPY_64];
         total_area += (mem_copy_64_events as u64) * costs[&RiscvAirDiscriminants::MemCopy64];
         total_chips += 1;
 
