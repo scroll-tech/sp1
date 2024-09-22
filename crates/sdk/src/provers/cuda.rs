@@ -90,7 +90,7 @@ impl Prover<DefaultProverComponents> for CudaProver {
         }
 
         // Genenerate the wrap proof.
-        let outer_proof = self.cuda_prover.wrap_bn254(compress_proof)?;
+        let outer_proof = self.prover.wrap_bn254(compress_proof, _opts.sp1_prover_opts)?;
         {
             tracing::info!("verify wrap bn254");
             self.prover.verify_wrap_bn254(&outer_proof, &pk.vk).expect("prove wrap bn254 failed");
