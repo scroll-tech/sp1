@@ -25,7 +25,7 @@ mod zkvm {
     use crate::syscalls::syscall_halt;
 
     use cfg_if::cfg_if;
-    use sha2::{Digest, Sha256};
+    use sha3::{Digest, Keccak256};
 
     cfg_if! {
         if #[cfg(feature = "verify")] {
@@ -36,13 +36,13 @@ mod zkvm {
         }
     }
 
-    pub static mut PUBLIC_VALUES_HASHER: Option<Sha256> = None;
+    pub static mut PUBLIC_VALUES_HASHER: Option<Keccak256> = None;
 
     #[cfg(not(feature = "interface"))]
     #[no_mangle]
     unsafe extern "C" fn __start() {
         {
-            PUBLIC_VALUES_HASHER = Some(Sha256::new());
+            PUBLIC_VALUES_HASHER = Some(Keccak256::new());
             #[cfg(feature = "verify")]
             {
                 DEFERRED_PROOFS_DIGEST = Some([BabyBear::zero(); 8]);
