@@ -109,15 +109,9 @@ impl<F: PrimeField32, NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength
             cols.src_ptr = F::from_canonical_u32(event.src_ptr);
             cols.dst_ptr = F::from_canonical_u32(event.dst_ptr);
 
-            /*
-                cols.nonce = F::from_canonical_u32(
-                    output
-                        .nonce_lookup
-                        .get(&event.lookup_id)
-                        .copied()
-                        .expect("should not be none"),
-                );
-            */
+            //cols.nonce = F::from_canonical_u32(
+            //    output.nonce_lookup.get(&event.lookup_id).copied().expect("should not be none"),
+            //);
 
             for i in 0..NumWords::USIZE {
                 cols.src_access[i].populate(event.read_records[i], &mut new_byte_lookup_events);
@@ -142,7 +136,7 @@ impl<F: PrimeField32, NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength
         for i in 0..trace.height() {
             let cols: &mut MemCopyCols<F, NumWords> =
                 trace.values[i * Self::NUM_COLS..(i + 1) * Self::NUM_COLS].borrow_mut();
-            //cols.nonce = F::from_canonical_usize(i);
+            cols.nonce = F::from_canonical_usize(i);
         }
         trace
     }
@@ -169,37 +163,44 @@ impl<AB: SP1AirBuilder, NumWords: ArrayLength + Sync, NumBytes: ArrayLength + Sy
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
-        let row = main.row_slice(0);
-        let row: &MemCopyCols<AB::Var, NumWords> = (*row).borrow();
+        let local = main.row_slice(0);
+        let local: &MemCopyCols<AB::Var, NumWords> = (*local).borrow();
+        let next = main.row_slice(1);
+        let next: &MemCopyCols<AB::Var, NumWords> = (*next).borrow();
 
-        let src: Limbs<<AB as AirBuilder>::Var, NumBytes> = limbs_from_prev_access(&row.src_access);
-        let dst: Limbs<<AB as AirBuilder>::Var, NumBytes> = limbs_from_access(&row.dst_access);
+        // Check that nonce is incremented.
+        builder.when_first_row().assert_zero(local.nonce);
+        builder.when_transition().assert_eq(local.nonce + AB::Expr::one(), next.nonce);
+
+        let src: Limbs<<AB as AirBuilder>::Var, NumBytes> =
+            limbs_from_prev_access(&local.src_access);
+        let dst: Limbs<<AB as AirBuilder>::Var, NumBytes> = limbs_from_access(&local.dst_access);
 
         // TODO assert eq
 
         builder.eval_memory_access_slice(
-            row.shard,
-            row.clk.into(),
-            row.src_ptr,
-            &row.src_access,
-            row.is_real,
+            local.shard,
+            local.clk.into(),
+            local.src_ptr,
+            &local.src_access,
+            local.is_real,
         );
         builder.eval_memory_access_slice(
-            row.shard,
-            row.clk.into(),
-            row.dst_ptr,
-            &row.dst_access,
-            row.is_real,
+            local.shard,
+            local.clk.into() + AB::Expr::one(),
+            local.dst_ptr,
+            &local.dst_access,
+            local.is_real,
         );
 
         builder.receive_syscall(
-            row.shard,
-            row.clk,
-            row.nonce,
+            local.shard,
+            local.clk,
+            local.nonce,
             AB::F::from_canonical_u32(Self::syscall_id()),
-            row.src_ptr,
-            row.dst_ptr,
-            row.is_real,
+            local.src_ptr,
+            local.dst_ptr,
+            local.is_real,
             InteractionScope::Global,
         );
     }

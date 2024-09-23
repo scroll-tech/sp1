@@ -248,7 +248,6 @@ impl ExecutionRecord {
         let precompile_local_mem_events = self.precompile_events.get_local_mem_events();
         precompile_local_mem_events.chain(self.cpu_local_memory_access.iter())
     }
-
 }
 
 /// A memory access record.

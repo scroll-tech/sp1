@@ -89,15 +89,9 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
             cols.p_ptr = F::from_canonical_u32(event.arg1.ptr);
             cols.q_ptr = F::from_canonical_u32(event.arg2.ptr);
 
-            /*
-                cols.nonce = F::from_canonical_u32(
-                    output
-                        .nonce_lookup
-                        .get(&event.lookup_id)
-                        .copied()
-                        .expect("should not be none"),
-                );
-            */
+            //cols.nonce = F::from_canonical_u32(
+            //    output.nonce_lookup.get(&event.lookup_id).copied().expect("should not be none"),
+            //);
 
             cols.eval.populate(
                 &mut new_byte_lookup_events,
@@ -138,9 +132,9 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMulChip {
             RowMajorMatrix::new(rows.into_iter().flatten().collect::<Vec<_>>(), NUM_COLS);
         // Write the nonces to the trace.
         for i in 0..trace.height() {
-            let _cols: &mut Bn254ScalarMulCols<F> =
+            let cols: &mut Bn254ScalarMulCols<F> =
                 trace.values[i * NUM_COLS..(i + 1) * NUM_COLS].borrow_mut();
-            //cols.nonce = F::from_canonical_usize(i);
+            cols.nonce = F::from_canonical_usize(i);
         }
 
         trace
@@ -164,49 +158,55 @@ where
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
-        let row = main.row_slice(0);
-        let row: &Bn254ScalarMulCols<AB::Var> = (*row).borrow();
+        let local = main.row_slice(0);
+        let local: &Bn254ScalarMulCols<AB::Var> = (*local).borrow();
+        let next = main.row_slice(1);
+        let next: &Bn254ScalarMulCols<AB::Var> = (*next).borrow();
 
-        builder.assert_bool(row.is_real);
+        // Check that nonce is incremented.
+        builder.when_first_row().assert_zero(local.nonce);
+        builder.when_transition().assert_eq(local.nonce + AB::Expr::one(), next.nonce);
+
+        builder.assert_bool(local.is_real);
 
         let p: Limbs<<AB as AirBuilder>::Var, <Bn254ScalarField as NumLimbs>::Limbs> =
-            limbs_from_prev_access(&row.p_access);
+            limbs_from_prev_access(&local.p_access);
         let q: Limbs<<AB as AirBuilder>::Var, <Bn254ScalarField as NumLimbs>::Limbs> =
-            limbs_from_prev_access(&row.q_access);
+            limbs_from_prev_access(&local.q_access);
 
-        row.eval.eval(builder, &p, &q, OP.to_field_operation(), row.is_real);
+        local.eval.eval(builder, &p, &q, OP.to_field_operation(), local.is_real);
 
         for i in 0..Bn254ScalarField::NB_LIMBS {
             builder
-                .when(row.is_real)
-                .assert_eq(row.eval.result[i], row.p_access[i / 4].value()[i % 4]);
+                .when(local.is_real)
+                .assert_eq(local.eval.result[i], local.p_access[i / 4].value()[i % 4]);
         }
 
         builder.eval_memory_access_slice(
-            row.shard,
-            row.clk.into(),
-            row.q_ptr,
-            &row.q_access,
-            row.is_real,
+            local.shard,
+            local.clk.into(),
+            local.q_ptr,
+            &local.q_access,
+            local.is_real,
         );
 
         builder.eval_memory_access_slice(
-            row.shard,
-            row.clk.into(),
-            row.p_ptr,
-            &row.p_access,
-            row.is_real,
+            local.shard,
+            local.clk.into(),
+            local.p_ptr + AB::Expr::one(),
+            &local.p_access,
+            local.is_real,
         );
 
         let syscall_id = AB::F::from_canonical_u32(SyscallCode::BN254_SCALAR_MUL.syscall_id());
         builder.receive_syscall(
-            row.shard,
-            row.clk,
-            row.nonce,
+            local.shard,
+            local.clk,
+            local.nonce,
             syscall_id,
-            row.p_ptr,
-            row.q_ptr,
-            row.is_real,
+            local.p_ptr,
+            local.q_ptr,
+            local.is_real,
             InteractionScope::Global,
         );
     }
