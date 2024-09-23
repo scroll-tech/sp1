@@ -216,10 +216,10 @@ memcpy:
 	seqz	a4, a2
 	or	a4, a3, a4
 	mv	a3, a0
-	bnez	a4, .LBB0_11
+	bnez	a4, .LBB0_11memcpy
 	addi	a0, a1, 1
 	mv	a6, a3
-.LBB0_2:
+.LBB0_2memcpy:
 	lb	a7, 0(a1)
 	addi	a5, a1, 1
 	addi	a4, a6, 1
@@ -232,18 +232,18 @@ memcpy:
 	addi	a0, a0, 1
 	mv	a1, a5
 	mv	a6, a4
-	bnez	a7, .LBB0_2
+	bnez	a7, .LBB0_2memcpy
 	andi	a0, a4, 3
-	beqz	a0, .LBB0_12
-.LBB0_4:
+	beqz	a0, .LBB0_12memcpy
+.LBB0_4memcpy:
 	li	a1, 32
-	bltu	a2, a1, .LBB0_32
+	bltu	a2, a1, .LBB0_32memcpy
 	li	a1, 3
-	beq	a0, a1, .LBB0_25
+	beq	a0, a1, .LBB0_25memcpy
 	li	a1, 2
-	beq	a0, a1, .LBB0_28
+	beq	a0, a1, .LBB0_28memcpy
 	li	a1, 1
-	bne	a0, a1, .LBB0_32
+	bne	a0, a1, .LBB0_32memcpy
 	lw	a6, 0(a5)
 	sb	a6, 0(a4)
 	srli	a0, a6, 8
@@ -254,7 +254,7 @@ memcpy:
 	addi	a2, a2, -3
 	addi	a1, a5, 16
 	li	a4, 16
-.LBB0_9:
+.LBB0_9memcpy:
 	lw	a5, -12(a1)
 	srli	a6, a6, 24
 	slli	a7, a5, 8
@@ -278,21 +278,21 @@ memcpy:
 	addi	a0, a0, 16
 	addi	a2, a2, -16
 	addi	a1, a1, 16
-	bltu	a4, a2, .LBB0_9
+	bltu	a4, a2, .LBB0_9memcpy
 	addi	a5, a1, -13
-	j	.LBB0_31
-.LBB0_11:
+	j	.LBB0_31memcpy
+.LBB0_11memcpy:
 	mv	a4, a3
 	mv	a5, a1
 	andi	a0, a4, 3
-	bnez	a0, .LBB0_4
-.LBB0_12:
+	bnez	a0, .LBB0_4memcpy
+.LBB0_12memcpy:
 	li	a0, 64
-	bltu	a2, a0, .LBB0_15
+	bltu	a2, a0, .LBB0_15memcpy
 	lui	a0, 16
 	addi	a6, a0, 401
 	li	a7, 63
-.LBB0_14:
+.LBB0_14memcpy:
 	#APP
 	mv	t0, a6
 	mv	a0, a5
@@ -302,14 +302,14 @@ memcpy:
 	addi	a5, a5, 64
 	addi	a2, a2, -64
 	addi	a4, a4, 64
-	bltu	a7, a2, .LBB0_14
-.LBB0_15:
+	bltu	a7, a2, .LBB0_14memcpy
+.LBB0_15memcpy:
 	li	a0, 32
-	bltu	a2, a0, .LBB0_18
+	bltu	a2, a0, .LBB0_18memcpy
 	lui	a0, 16
 	addi	a6, a0, 400
 	li	a7, 31
-.LBB0_17:
+.LBB0_17memcpy:
 	#APP
 	mv	t0, a6
 	mv	a0, a5
@@ -319,12 +319,12 @@ memcpy:
 	addi	a5, a5, 32
 	addi	a2, a2, -32
 	addi	a4, a4, 32
-	bltu	a7, a2, .LBB0_17
-.LBB0_18:
+	bltu	a7, a2, .LBB0_17memcpy
+.LBB0_18memcpy:
 	li	a0, 16
-	bltu	a2, a0, .LBB0_21
+	bltu	a2, a0, .LBB0_21memcpy
 	li	a0, 15
-.LBB0_20:
+.LBB0_20memcpy:
 	lw	a1, 0(a5)
 	lw	a6, 4(a5)
 	lw	a7, 8(a5)
@@ -336,32 +336,32 @@ memcpy:
 	addi	a5, a5, 16
 	addi	a2, a2, -16
 	addi	a4, a4, 16
-	bltu	a0, a2, .LBB0_20
-.LBB0_21:
+	bltu	a0, a2, .LBB0_20memcpy
+.LBB0_21memcpy:
 	andi	a0, a2, 8
-	beqz	a0, .LBB0_23
+	beqz	a0, .LBB0_23memcpy
 	lw	a0, 0(a5)
 	lw	a1, 4(a5)
 	sw	a0, 0(a4)
 	sw	a1, 4(a4)
 	addi	a4, a4, 8
 	addi	a5, a5, 8
-.LBB0_23:
+.LBB0_23memcpy:
 	andi	a0, a2, 4
-	beqz	a0, .LBB0_36
+	beqz	a0, .LBB0_36memcpy
 	lw	a0, 0(a5)
 	sw	a0, 0(a4)
 	addi	a4, a4, 4
 	addi	a5, a5, 4
-	j	.LBB0_36
-.LBB0_25:
+	j	.LBB0_36memcpy
+.LBB0_25memcpy:
 	lw	a6, 0(a5)
 	addi	a0, a4, 1
 	sb	a6, 0(a4)
 	addi	a2, a2, -1
 	addi	a1, a5, 16
 	li	a4, 18
-.LBB0_26:
+.LBB0_26memcpy:
 	lw	a5, -12(a1)
 	srli	a6, a6, 8
 	slli	a7, a5, 24
@@ -385,10 +385,10 @@ memcpy:
 	addi	a0, a0, 16
 	addi	a2, a2, -16
 	addi	a1, a1, 16
-	bltu	a4, a2, .LBB0_26
+	bltu	a4, a2, .LBB0_26memcpy
 	addi	a5, a1, -15
-	j	.LBB0_31
-.LBB0_28:
+	j	.LBB0_31memcpy
+.LBB0_28memcpy:
 	lw	a6, 0(a5)
 	sb	a6, 0(a4)
 	srli	a1, a6, 8
@@ -397,7 +397,7 @@ memcpy:
 	addi	a2, a2, -2
 	addi	a1, a5, 16
 	li	a4, 17
-.LBB0_29:
+.LBB0_29memcpy:
 	lw	a5, -12(a1)
 	srli	a6, a6, 16
 	slli	a7, a5, 16
@@ -421,19 +421,19 @@ memcpy:
 	addi	a0, a0, 16
 	addi	a2, a2, -16
 	addi	a1, a1, 16
-	bltu	a4, a2, .LBB0_29
+	bltu	a4, a2, .LBB0_29memcpy
 	addi	a5, a1, -14
-.LBB0_31:
+.LBB0_31memcpy:
 	mv	a4, a0
-.LBB0_32:
+.LBB0_32memcpy:
 	andi	a0, a2, 16
-	bnez	a0, .LBB0_41
+	bnez	a0, .LBB0_41memcpy
 	andi	a0, a2, 8
-	bnez	a0, .LBB0_42
-.LBB0_34:
+	bnez	a0, .LBB0_42memcpy
+.LBB0_34memcpy:
 	andi	a0, a2, 4
-	beqz	a0, .LBB0_36
-.LBB0_35:
+	beqz	a0, .LBB0_36memcpy
+.LBB0_35memcpy:
 	lb	a0, 0(a5)
 	lb	a1, 1(a5)
 	lb	a6, 2(a5)
@@ -445,15 +445,15 @@ memcpy:
 	addi	a1, a4, 4
 	sb	a0, 3(a4)
 	mv	a4, a1
-.LBB0_36:
+.LBB0_36memcpy:
 	andi	a0, a2, 2
-	bnez	a0, .LBB0_39
+	bnez	a0, .LBB0_39memcpy
 	andi	a0, a2, 1
-	bnez	a0, .LBB0_40
-.LBB0_38:
+	bnez	a0, .LBB0_40memcpy
+.LBB0_38memcpy:
 	mv	a0, a3
 	ret
-.LBB0_39:
+.LBB0_39memcpy:
 	lb	a0, 0(a5)
 	lb	a1, 1(a5)
 	sb	a0, 0(a4)
@@ -462,13 +462,13 @@ memcpy:
 	sb	a1, 1(a4)
 	mv	a4, a0
 	andi	a0, a2, 1
-	beqz	a0, .LBB0_38
-.LBB0_40:
+	beqz	a0, .LBB0_38memcpy
+.LBB0_40memcpy:
 	lb	a0, 0(a5)
 	sb	a0, 0(a4)
 	mv	a0, a3
 	ret
-.LBB0_41:
+.LBB0_41memcpy:
 	lb	a0, 0(a5)
 	lb	a1, 1(a5)
 	lb	a6, 2(a5)
@@ -505,8 +505,8 @@ memcpy:
 	sb	a1, 15(a4)
 	mv	a4, a0
 	andi	a0, a2, 8
-	beqz	a0, .LBB0_34
-.LBB0_42:
+	beqz	a0, .LBB0_34memcpy
+.LBB0_42memcpy:
 	lb	a0, 0(a5)
 	lb	a1, 1(a5)
 	lb	a6, 2(a5)
@@ -527,10 +527,10 @@ memcpy:
 	sb	a1, 7(a4)
 	mv	a4, a0
 	andi	a0, a2, 4
-	bnez	a0, .LBB0_35
-	j	.LBB0_36
-.Lfunc_end0:
-	.size	memcpy, .Lfunc_end0-memcpy
+	bnez	a0, .LBB0_35memcpy
+	j	.LBB0_36memcpy
+.Lfunc_end0memcpy:
+	.size	memcpy, .Lfunc_end0memcpy-memcpy
 
 	.ident	"Ubuntu clang version 14.0.0-1ubuntu1.1"
 	.section	".note.GNU-stack","",@progbits
