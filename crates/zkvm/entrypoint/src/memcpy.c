@@ -1,5 +1,6 @@
 // clang -target riscv32 -march=rv32im -O3 -S memcpy.c -nostdlib -fno-builtin -funroll-loops
 // replace contents start from `memcpy:` to the end by new memcpy.s
+// manually add `memcpy` suffix to all labels in memcpy.s
 #include <stdint.h>
 #include <stddef.h>
 
