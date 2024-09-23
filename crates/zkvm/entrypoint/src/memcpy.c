@@ -1,5 +1,7 @@
-#include <string.h>
+// clang -target riscv32 -march=rv32im -O3 -S memcpy.c -nostdlib -fno-builtin -funroll-loops
+// replace contents start from `memcpy:` to the end by new memcpy.s
 #include <stdint.h>
+#include <stddef.h>
 
 #define MEMCPY_32 0x00010190
 #define MEMCPY_64 0x00010191
