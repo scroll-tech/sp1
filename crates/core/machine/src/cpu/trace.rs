@@ -548,7 +548,8 @@ impl CpuChip {
     fn pad_to_power_of_two<F: PrimeField32>(&self, shape: &Option<CoreShape>, values: &mut Vec<F>) {
         let n_real_rows = values.len() / NUM_CPU_COLS;
         let padded_nb_rows = if let Some(shape) = shape {
-            1 << shape.inner[&MachineAir::<F>::name(self)]
+            let name = MachineAir::<F>::name(self);
+            1 << shape.inner.get(&name).expect(&format!("fail to get shape of {}", name))
         } else if n_real_rows < 16 {
             16
         } else {
