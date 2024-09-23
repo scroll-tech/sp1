@@ -58,20 +58,21 @@ pub fn create_bn254_scalar_arith_event(
     let p_ptr = arg1;
     let q_ptr = arg2;
 
-    assert_eq!(p_ptr % 4, 0, "p_ptr({:x}) is not aligned", p_ptr);
-    assert_eq!(q_ptr % 4, 0, "q_ptr({:x}) is not aligned", q_ptr);
+    assert_eq!(p_ptr % 4, 0, "p_ptr({p_ptr:x}) is not aligned");
+    assert_eq!(q_ptr % 4, 0, "q_ptr({q_ptr:x}) is not aligned");
 
     let nw_per_fe = <Bn254ScalarField as NumWords>::WordsFieldElement::USIZE;
     debug_assert_eq!(nw_per_fe, NUM_WORDS_PER_FE);
 
     let arg1: Vec<u32> = rt.slice_unsafe(p_ptr, nw_per_fe);
     let arg2 = match op {
+        // 2 ptrs of real U256 values
         Bn254FieldOperation::Mac => FieldArithMemoryAccess::read(rt, arg2, 2),
         _ => FieldArithMemoryAccess::read(rt, arg2, nw_per_fe),
     };
 
     let bn_arg1 = BigUint::from_bytes_le(
-        &arg1.iter().copied().flat_map(|word| word.to_le_bytes()).collect::<Vec<u8>>(),
+        &arg1.iter().copied().flat_map(u32::to_le_bytes).collect::<Vec<u8>>(),
     );
     let modulus = Bn254ScalarField::modulus();
 
@@ -104,6 +105,7 @@ pub fn create_bn254_scalar_arith_event(
         a,
         b
     );
+    rt.clk += 1;
 
     let mut result_words = bn_arg1_out.to_u32_digits();
     result_words.resize(nw_per_fe, 0);
@@ -149,7 +151,7 @@ impl FieldArithMemoryAccess<MemoryReadRecord> {
 
 impl FieldArithMemoryAccess<MemoryWriteRecord> {
     pub fn write(rt: &mut SyscallContext, ptr: u32, values: &[u32]) -> Self {
-        Self { ptr, memory_records: rt.mw_slice(ptr, &values) }
+        Self { ptr, memory_records: rt.mw_slice(ptr, values) }
     }
 
     pub fn prev_value_as_biguint(&self) -> BigUint {
