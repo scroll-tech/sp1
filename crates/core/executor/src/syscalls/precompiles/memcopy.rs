@@ -28,6 +28,10 @@ impl<NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength + Send + Sync> S
         dst: u32,
     ) -> Option<u32> {
         let (read, read_bytes) = rt.mr_slice(src, NumWords::USIZE);
+
+        // dst == src is supported, even it is actually a no-op.
+        rt.clk += 1;
+
         let write = rt.mw_slice(dst, &read_bytes);
 
         let event = MemCopyEvent {
@@ -50,5 +54,9 @@ impl<NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength + Send + Sync> S
         );
 
         None
+    }
+
+    fn num_extra_cycles(&self) -> u32 {
+        1
     }
 }
