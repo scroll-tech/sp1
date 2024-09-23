@@ -1,8 +1,8 @@
 #include <string.h>
 #include <stdint.h>
 
-#define MEMCPY_32 0x00000130
-#define MEMCPY_64 0x00000131
+#define MEMCPY_32 0x00010190
+#define MEMCPY_64 0x00010191
 
 void *memcpy(void *restrict dest, const void *restrict src, size_t n)
 {

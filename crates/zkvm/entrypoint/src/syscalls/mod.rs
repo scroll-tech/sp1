@@ -106,23 +106,15 @@ pub const BLS12381_ADD: u32 = 0x00_01_01_1E;
 /// Executes the `BLS12381_DOUBLE` precompile.
 pub const BLS12381_DOUBLE: u32 = 0x00_00_01_1F;
 
-/// Executes the `BN254_SCALAR_MUL` precompile
-pub const BN254_SCALAR_MUL: u32 = 0x00_01_02_20;
 /// Executes the `BLS12381_FP_ADD` precompile.
 pub const BLS12381_FP_ADD: u32 = 0x00_01_01_20;
 
-/// Executes the `BN254_SCALAR_MAC` precompile
-pub const BN254_SCALAR_MAC: u32 = 0x00_01_02_21;
 /// Executes the `BLS12381_FP_SUB` precompile.
 pub const BLS12381_FP_SUB: u32 = 0x00_01_01_21;
 
-/// Executes the `MEMCPY_32` precompile
-pub const MEMCPY_32: u32 = 0x00_00_02_30;
 /// Executes the `BLS12381_FP_MUL` precompile.
 pub const BLS12381_FP_MUL: u32 = 0x00_01_01_22;
 
-/// Executes the `MEMCPY_64` precompile
-pub const MEMCPY_64: u32 = 0x00_00_02_31;
 /// Executes the `BLS12381_FP2_ADD` precompile.
 pub const BLS12381_FP2_ADD: u32 = 0x00_01_01_23;
 
@@ -149,3 +141,12 @@ pub const BN254_FP2_SUB: u32 = 0x00_01_01_2A;
 
 /// Executes the `BN254_FP2_MUL` precompile.
 pub const BN254_FP2_MUL: u32 = 0x00_01_01_2B;
+
+/// Executes the `MEMCPY_32` precompile
+pub const MEMCPY_32: u32 = 0x00_01_01_90;
+/// Executes the `MEMCPY_64` precompile
+pub const MEMCPY_64: u32 = 0x00_01_01_91;
+/// Executes the `BN254_SCALAR_MUL` precompile
+pub const BN254_SCALAR_MUL: u32 = 0x00_01_01_80;
+/// Executes the `BN254_SCALAR_MAC` precompile
+pub const BN254_SCALAR_MAC: u32 = 0x00_01_01_81;
