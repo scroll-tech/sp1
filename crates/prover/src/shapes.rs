@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::File,
+    iter::once,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -20,7 +21,7 @@ use sp1_stark::{MachineProver, ProofShape, DIGEST_SIZE};
 
 use crate::{
     components::SP1ProverComponents, utils::MaybeTakeIterator, CompressAir, HashableKey, InnerSC,
-    SP1Prover,
+    SP1Prover, ShrinkAir,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -28,12 +29,14 @@ pub enum SP1ProofShape {
     Recursion(ProofShape),
     Compress(Vec<ProofShape>),
     Deferred(ProofShape),
+    Shrink(ProofShape),
 }
 
 pub enum SP1CompressProgramShape {
     Recursion(SP1RecursionShape),
     Compress(SP1CompressWithVkeyShape),
     Deferred(SP1DeferredShape),
+    Shrink(SP1CompressWithVkeyShape),
 }
 
 pub fn build_vk_map<C: SP1ProverComponents>(
@@ -97,7 +100,8 @@ pub fn build_vk_map<C: SP1ProverComponents>(
                 let prover = &prover;
                 s.spawn(move || {
                     while let Ok(program) = program_rx.lock().unwrap().recv() {
-                        let (_, vk) = prover.compress_prover.setup(&program);
+                        let (_, vk) = tracing::debug_span!("setup")
+                            .in_scope(|| prover.compress_prover.setup(&program));
                         let vk_digest = vk.hash_babybear();
                         vk_tx.send(vk_digest).unwrap();
                     }
@@ -165,6 +169,7 @@ impl SP1ProofShape {
                     .get_all_shape_combinations(reduce_batch_size)
                     .map(Self::Compress),
             )
+            .chain(once(Self::Shrink(ShrinkAir::<BabyBear>::shrink_shape().into())))
     }
 
     pub fn dummy_vk_map<'a>(
@@ -183,9 +188,15 @@ impl SP1CompressProgramShape {
     pub fn from_proof_shape(shape: SP1ProofShape, height: usize) -> Self {
         match shape {
             SP1ProofShape::Recursion(proof_shape) => Self::Recursion(proof_shape.into()),
-            SP1ProofShape::Deferred(proof_shape) => Self::Deferred(proof_shape.into()),
+            SP1ProofShape::Deferred(proof_shape) => {
+                Self::Deferred(SP1DeferredShape::new(vec![proof_shape].into(), height))
+            }
             SP1ProofShape::Compress(proof_shapes) => Self::Compress(SP1CompressWithVkeyShape {
                 compress_shape: proof_shapes.into(),
+                merkle_tree_height: height,
+            }),
+            SP1ProofShape::Shrink(proof_shape) => Self::Shrink(SP1CompressWithVkeyShape {
+                compress_shape: vec![proof_shape].into(),
                 merkle_tree_height: height,
             }),
         }
@@ -210,6 +221,11 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 let input =
                     SP1CompressWithVKeyWitnessValues::dummy(self.compress_prover.machine(), &shape);
                 self.compress_program(&input)
+            }
+            SP1CompressProgramShape::Shrink(shape) => {
+                let input =
+                    SP1CompressWithVKeyWitnessValues::dummy(self.compress_prover.machine(), &shape);
+                self.shrink_program(&input)
             }
         }
     }
