@@ -38,6 +38,7 @@ use sp1_curves::{
     weierstrass::{
         bls12_381::{Bls12381, Bls12381BaseField},
         bn254::{Bn254, Bn254BaseField},
+        grumpkin::GrumpkinBaseField,
         secp256k1::Secp256k1,
     },
 };
@@ -170,6 +171,21 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
     syscall_map.insert(
         SyscallCode::BN254_FP_MUL,
         Arc::new(FpOpSyscall::<Bn254BaseField>::new(FieldOperation::Mul)),
+    );
+
+    syscall_map.insert(
+        SyscallCode::GRUMPKIN_FP_ADD,
+        Arc::new(FpOpSyscall::<GrumpkinBaseField>::new(FieldOperation::Add)),
+    );
+
+    syscall_map.insert(
+        SyscallCode::GRUMPKIN_FP_SUB,
+        Arc::new(FpOpSyscall::<GrumpkinBaseField>::new(FieldOperation::Sub)),
+    );
+
+    syscall_map.insert(
+        SyscallCode::GRUMPKIN_FP_MUL,
+        Arc::new(FpOpSyscall::<GrumpkinBaseField>::new(FieldOperation::Mul)),
     );
 
     syscall_map.insert(
