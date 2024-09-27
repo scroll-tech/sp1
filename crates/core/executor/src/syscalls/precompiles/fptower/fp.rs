@@ -103,7 +103,7 @@ impl<P: FpOpField> Syscall for FpOpSyscall<P> {
                 };
 
                 rt.record_mut()
-                    .add_precompile_event(syscall_code_key, PrecompileEvent::Bn254Fp(event));
+                    .add_precompile_event(syscall_code_key, PrecompileEvent::GrumpkinFp(event));
             }
             FieldType::Bls12381 => {
                 let syscall_code_key = match syscall_code {
