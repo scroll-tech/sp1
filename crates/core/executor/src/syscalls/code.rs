@@ -120,6 +120,15 @@ pub enum SyscallCode {
     /// Executes the `BN254_FP_MUL` precompile.
     BN254_FP_MUL = 0x00_01_01_28,
 
+    /// Executes the `GRUMPKIN_FP_ADD` precompile.
+    GRUMPKIN_FP_ADD = 0x00_01_01_56,
+
+    /// Executes the `GRUMPKIN_FP_SUB` precompile.
+    GRUMPKIN_FP_SUB = 0x00_01_01_57,
+
+    /// Executes the `GRUMPKIN_FP_MUL` precompile.
+    GRUMPKIN_FP_MUL = 0x00_01_01_58,
+
     /// Executes the `BN254_FP2_ADD` precompile.
     BN254_FP2_ADD = 0x00_01_01_29,
 
@@ -166,6 +175,9 @@ impl SyscallCode {
             0x00_01_01_26 => SyscallCode::BN254_FP_ADD,
             0x00_01_01_27 => SyscallCode::BN254_FP_SUB,
             0x00_01_01_28 => SyscallCode::BN254_FP_MUL,
+            0x00_01_01_56 => SyscallCode::GRUMPKIN_FP_ADD,
+            0x00_01_01_57 => SyscallCode::GRUMPKIN_FP_SUB,
+            0x00_01_01_58 => SyscallCode::GRUMPKIN_FP_MUL,
             0x00_01_01_29 => SyscallCode::BN254_FP2_ADD,
             0x00_01_01_2A => SyscallCode::BN254_FP2_SUB,
             0x00_01_01_2B => SyscallCode::BN254_FP2_MUL,
@@ -199,7 +211,10 @@ impl SyscallCode {
         match self {
             SyscallCode::BN254_FP_SUB => SyscallCode::BN254_FP_ADD,
             SyscallCode::BN254_FP_MUL => SyscallCode::BN254_FP_ADD,
+            SyscallCode::GRUMPKIN_FP_SUB => SyscallCode::GRUMPKIN_FP_ADD,
+            SyscallCode::GRUMPKIN_FP_MUL => SyscallCode::GRUMPKIN_FP_ADD,
             SyscallCode::BN254_FP2_SUB => SyscallCode::BN254_FP2_ADD,
+            SyscallCode::BN254_FP2_MUL => SyscallCode::BN254_FP2_ADD,
             SyscallCode::BLS12381_FP_SUB => SyscallCode::BLS12381_FP_ADD,
             SyscallCode::BLS12381_FP_MUL => SyscallCode::BLS12381_FP_ADD,
             SyscallCode::BLS12381_FP2_SUB => SyscallCode::BLS12381_FP2_ADD,

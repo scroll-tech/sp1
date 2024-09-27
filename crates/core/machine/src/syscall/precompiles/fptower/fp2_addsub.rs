@@ -87,6 +87,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2AddSubAssignChip<P> {
         match P::FIELD_TYPE {
             FieldType::Bn254 => "Bn254Fp2AddSubAssign".to_string(),
             FieldType::Bls12381 => "Bls12831Fp2AddSubAssign".to_string(),
+            _ => unreachable!(),
         }
     }
 
@@ -100,6 +101,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2AddSubAssignChip<P> {
             FieldType::Bls12381 => {
                 input.get_precompile_events(SyscallCode::BLS12381_FP2_ADD).iter()
             }
+            _ => unreachable!(),
         };
 
         let mut rows = Vec::new();
@@ -206,6 +208,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2AddSubAssignChip<P> {
             FieldType::Bls12381 => {
                 !shard.get_precompile_events(SyscallCode::BLS12381_FP2_ADD).is_empty()
             }
+            _ => unreachable!(),
         }
     }
 }
@@ -304,6 +307,7 @@ where
                 AB::F::from_canonical_u32(SyscallCode::BLS12381_FP2_ADD.syscall_id()),
                 AB::F::from_canonical_u32(SyscallCode::BLS12381_FP2_SUB.syscall_id()),
             ),
+            _ => unreachable!(),
         };
 
         let syscall_id_felt =

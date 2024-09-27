@@ -94,6 +94,17 @@ impl<P: FpOpField> Syscall for FpOpSyscall<P> {
                 rt.record_mut()
                     .add_precompile_event(syscall_code_key, PrecompileEvent::Bn254Fp(event));
             }
+            FieldType::Grumpkin => {
+                let syscall_code_key = match syscall_code {
+                    SyscallCode::GRUMPKIN_FP_ADD
+                    | SyscallCode::GRUMPKIN_FP_SUB
+                    | SyscallCode::GRUMPKIN_FP_MUL => SyscallCode::GRUMPKIN_FP_ADD,
+                    _ => unreachable!(),
+                };
+
+                rt.record_mut()
+                    .add_precompile_event(syscall_code_key, PrecompileEvent::Bn254Fp(event));
+            }
             FieldType::Bls12381 => {
                 let syscall_code_key = match syscall_code {
                     SyscallCode::BLS12381_FP_ADD
