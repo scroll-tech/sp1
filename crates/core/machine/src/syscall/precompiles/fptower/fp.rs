@@ -105,6 +105,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
         for event in events {
             let event = match (P::FIELD_TYPE, event) {
                 (FieldType::Bn254, PrecompileEvent::Bn254Fp(event)) => event,
+                (FieldType::Grumpkin, PrecompileEvent::GrumpkinFp(event)) => event,
                 (FieldType::Bls12381, PrecompileEvent::Bls12381Fp(event)) => event,
                 _ => unreachable!(),
             };
