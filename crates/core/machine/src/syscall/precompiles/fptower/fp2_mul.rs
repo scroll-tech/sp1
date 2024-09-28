@@ -136,6 +136,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2MulAssignChip<P> {
         match P::FIELD_TYPE {
             FieldType::Bn254 => "Bn254Fp2MulAssign".to_string(),
             FieldType::Bls12381 => "Bls12831Fp2MulAssign".to_string(),
+            _ => unreachable!(),
         }
     }
 
@@ -143,6 +144,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2MulAssignChip<P> {
         let events = match P::FIELD_TYPE {
             FieldType::Bn254 => input.get_precompile_events(SyscallCode::BN254_FP2_MUL),
             FieldType::Bls12381 => input.get_precompile_events(SyscallCode::BLS12381_FP2_MUL),
+            _ => unreachable!(),
         };
 
         let mut rows = Vec::new();
@@ -236,6 +238,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for Fp2MulAssignChip<P> {
             FieldType::Bls12381 => {
                 !shard.get_precompile_events(SyscallCode::BLS12381_FP2_MUL).is_empty()
             }
+            _ => unreachable!(),
         }
     }
 }
@@ -360,6 +363,7 @@ where
             FieldType::Bls12381 => {
                 AB::F::from_canonical_u32(SyscallCode::BLS12381_FP2_MUL.syscall_id())
             }
+            _ => unreachable!(),
         };
 
         builder.receive_syscall(

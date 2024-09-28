@@ -11,6 +11,7 @@ use crate::{
 
 pub mod bls12_381;
 pub mod bn254;
+pub mod grumpkin;
 pub mod secp256k1;
 
 /// Parameters that specify a short Weierstrass curve : y^2 = x^3 + ax + b.
@@ -218,6 +219,7 @@ impl<E: WeierstrassParameters> AffinePoint<SwCurve<E>> {
 pub enum FieldType {
     Bls12381,
     Bn254,
+    Grumpkin,
 }
 
 pub trait FpOpField: FieldParameters + NumWords {

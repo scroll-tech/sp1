@@ -83,6 +83,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
     fn name(&self) -> String {
         match P::FIELD_TYPE {
             FieldType::Bn254 => "Bn254FpOpAssign".to_string(),
+            FieldType::Grumpkin => "GrumpkinFpOpAssign".to_string(),
             FieldType::Bls12381 => "Bls12381FpOpAssign".to_string(),
         }
     }
@@ -94,6 +95,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
 
         let events = match P::FIELD_TYPE {
             FieldType::Bn254 => input.get_precompile_events(SyscallCode::BN254_FP_ADD).iter(),
+            FieldType::Grumpkin => input.get_precompile_events(SyscallCode::GRUMPKIN_FP_ADD).iter(),
             FieldType::Bls12381 => input.get_precompile_events(SyscallCode::BLS12381_FP_ADD).iter(),
         };
 
@@ -103,6 +105,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
         for event in events {
             let event = match (P::FIELD_TYPE, event) {
                 (FieldType::Bn254, PrecompileEvent::Bn254Fp(event)) => event,
+                (FieldType::Grumpkin, PrecompileEvent::GrumpkinFp(event)) => event,
                 (FieldType::Bls12381, PrecompileEvent::Bls12381Fp(event)) => event,
                 _ => unreachable!(),
             };
@@ -192,6 +195,9 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
 
         match P::FIELD_TYPE {
             FieldType::Bn254 => !shard.get_precompile_events(SyscallCode::BN254_FP_ADD).is_empty(),
+            FieldType::Grumpkin => {
+                !shard.get_precompile_events(SyscallCode::GRUMPKIN_FP_ADD).is_empty()
+            }
             FieldType::Bls12381 => {
                 !shard.get_precompile_events(SyscallCode::BLS12381_FP_ADD).is_empty()
             }
@@ -276,6 +282,11 @@ where
                 AB::F::from_canonical_u32(SyscallCode::BN254_FP_ADD.syscall_id()),
                 AB::F::from_canonical_u32(SyscallCode::BN254_FP_SUB.syscall_id()),
                 AB::F::from_canonical_u32(SyscallCode::BN254_FP_MUL.syscall_id()),
+            ),
+            FieldType::Grumpkin => (
+                AB::F::from_canonical_u32(SyscallCode::GRUMPKIN_FP_ADD.syscall_id()),
+                AB::F::from_canonical_u32(SyscallCode::GRUMPKIN_FP_SUB.syscall_id()),
+                AB::F::from_canonical_u32(SyscallCode::GRUMPKIN_FP_MUL.syscall_id()),
             ),
             FieldType::Bls12381 => (
                 AB::F::from_canonical_u32(SyscallCode::BLS12381_FP_ADD.syscall_id()),

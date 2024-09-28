@@ -16,7 +16,9 @@ use crate::{
 use hashbrown::{HashMap, HashSet};
 use p3_field::PrimeField32;
 pub use riscv_chips::*;
-use sp1_curves::weierstrass::{bls12_381::Bls12381BaseField, bn254::Bn254BaseField};
+use sp1_curves::weierstrass::{
+    bls12_381::Bls12381BaseField, bn254::Bn254BaseField, grumpkin::GrumpkinBaseField,
+};
 use sp1_stark::{
     air::{InteractionScope, MachineAir, SP1_PROOF_NUM_PV_ELTS},
     Chip, StarkGenericConfig, StarkMachine,
@@ -132,6 +134,8 @@ pub enum RiscvAir<F: PrimeField32> {
     Bls12381Fp2AddSub(Fp2AddSubAssignChip<Bls12381BaseField>),
     /// A precompile for BN-254 fp operation.
     Bn254Fp(FpOpChip<Bn254BaseField>),
+    /// A precompile for Grumpkin fp operation.
+    GrumpkinFp(FpOpChip<GrumpkinBaseField>),
     /// A precompile for BN-254 fp2 multiplication.
     Bn254Fp2Mul(Fp2MulAssignChip<Bn254BaseField>),
     /// A precompile for BN-254 fp2 addition/subtraction.
@@ -263,6 +267,10 @@ impl<F: PrimeField32> RiscvAir<F> {
         let bn254_fp = Chip::new(RiscvAir::Bn254Fp(FpOpChip::<Bn254BaseField>::new()));
         costs.insert(RiscvAirDiscriminants::Bn254Fp, bn254_fp.cost());
         chips.push(bn254_fp);
+
+        let grumpkin_fp = Chip::new(RiscvAir::GrumpkinFp(FpOpChip::<GrumpkinBaseField>::new()));
+        costs.insert(RiscvAirDiscriminants::GrumpkinFp, grumpkin_fp.cost());
+        chips.push(grumpkin_fp);
 
         let bn254_fp2_addsub =
             Chip::new(RiscvAir::Bn254Fp2AddSub(Fp2AddSubAssignChip::<Bn254BaseField>::new()));

@@ -48,6 +48,8 @@ pub enum PrecompileEvent {
     Bn254Double(EllipticCurveDoubleEvent),
     /// Bn254 base field operation precompile event.
     Bn254Fp(FpOpEvent),
+    /// Grumpkin base field operation precompile event.
+    GrumpkinFp(FpOpEvent),
     /// Bn254 quadratic field add/sub precompile event.
     Bn254Fp2AddSub(Fp2AddSubEvent),
     /// Bn254 quadratic field mul precompile event.
@@ -111,7 +113,9 @@ impl PrecompileLocalMemory for Vec<PrecompileEvent> {
                 PrecompileEvent::Uint256Mul(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
-                PrecompileEvent::Bls12381Fp(e) | PrecompileEvent::Bn254Fp(e) => {
+                PrecompileEvent::Bls12381Fp(e)
+                | PrecompileEvent::Bn254Fp(e)
+                | PrecompileEvent::GrumpkinFp(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
                 PrecompileEvent::Bls12381Fp2AddSub(e) | PrecompileEvent::Bn254Fp2AddSub(e) => {

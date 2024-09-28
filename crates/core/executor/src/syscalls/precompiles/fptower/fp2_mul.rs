@@ -89,6 +89,7 @@ impl<P: FpOpField> Syscall for Fp2MulSyscall<P> {
             FieldType::Bls12381 => rt
                 .record_mut()
                 .add_precompile_event(syscall_code, PrecompileEvent::Bls12381Fp2Mul(event)),
+            _ => unimplemented!(),
         };
         None
     }

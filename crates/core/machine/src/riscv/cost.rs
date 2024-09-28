@@ -112,6 +112,12 @@ impl CostEstimator for ExecutionReport {
         total_area += (bn254_fp_events as u64) * costs[&RiscvAirDiscriminants::Bn254Fp];
         total_chips += 1;
 
+        let grumpkin_fp_events = self.syscall_counts[SyscallCode::GRUMPKIN_FP_ADD]
+            + self.syscall_counts[SyscallCode::GRUMPKIN_FP_SUB]
+            + self.syscall_counts[SyscallCode::GRUMPKIN_FP_MUL];
+        total_area += (grumpkin_fp_events as u64) * costs[&RiscvAirDiscriminants::GrumpkinFp];
+        total_chips += 1;
+
         let bn254_fp2_addsub_events = self.syscall_counts[SyscallCode::BN254_FP2_ADD]
             + self.syscall_counts[SyscallCode::BN254_FP2_SUB];
         total_area +=
