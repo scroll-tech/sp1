@@ -1,6 +1,8 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::File,
+    iter::once,
+    panic::{catch_unwind, AssertUnwindSafe},
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -8,19 +10,19 @@ use std::{
 use p3_baby_bear::BabyBear;
 use p3_field::AbstractField;
 use sp1_core_machine::riscv::CoreShapeConfig;
-use sp1_recursion_circuit_v2::{
+use sp1_recursion_circuit::{
     machine::{
         SP1CompressWithVKeyWitnessValues, SP1CompressWithVkeyShape, SP1DeferredShape,
         SP1DeferredWitnessValues, SP1RecursionShape, SP1RecursionWitnessValues,
     },
     merkle_tree::MerkleTree,
 };
-use sp1_recursion_core_v2::{shape::RecursionShapeConfig, RecursionProgram};
+use sp1_recursion_core::{shape::RecursionShapeConfig, RecursionProgram};
 use sp1_stark::{MachineProver, ProofShape, DIGEST_SIZE};
 
 use crate::{
     components::SP1ProverComponents, utils::MaybeTakeIterator, CompressAir, HashableKey, InnerSC,
-    SP1Prover,
+    SP1Prover, ShrinkAir,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -28,25 +30,25 @@ pub enum SP1ProofShape {
     Recursion(ProofShape),
     Compress(Vec<ProofShape>),
     Deferred(ProofShape),
+    Shrink(ProofShape),
 }
 
+#[derive(Debug, Clone)]
 pub enum SP1CompressProgramShape {
     Recursion(SP1RecursionShape),
     Compress(SP1CompressWithVkeyShape),
     Deferred(SP1DeferredShape),
+    Shrink(SP1CompressWithVkeyShape),
 }
 
 pub fn build_vk_map<C: SP1ProverComponents>(
-    build_dir: PathBuf,
     reduce_batch_size: usize,
     dummy: bool,
     num_compiler_workers: usize,
     num_setup_workers: usize,
     range_start: Option<usize>,
     range_end: Option<usize>,
-) {
-    std::fs::create_dir_all(&build_dir).expect("failed to create build directory");
-
+) -> BTreeMap<[BabyBear; DIGEST_SIZE], usize> {
     let prover = SP1Prover::<C>::new();
     let core_shape_config = prover.core_shape_config.as_ref().expect("core shape config not found");
     let recursion_shape_config =
@@ -58,7 +60,8 @@ pub fn build_vk_map<C: SP1ProverComponents>(
         SP1ProofShape::dummy_vk_map(core_shape_config, recursion_shape_config, reduce_batch_size)
     } else {
         let (vk_tx, vk_rx) = std::sync::mpsc::channel();
-        let (shape_tx, shape_rx) = std::sync::mpsc::sync_channel(num_compiler_workers);
+        let (shape_tx, shape_rx) =
+            std::sync::mpsc::sync_channel::<(usize, SP1CompressProgramShape)>(num_compiler_workers);
         let (program_tx, program_rx) = std::sync::mpsc::sync_channel(num_setup_workers);
 
         let shape_rx = Mutex::new(shape_rx);
@@ -83,9 +86,18 @@ pub fn build_vk_map<C: SP1ProverComponents>(
                 let shape_rx = &shape_rx;
                 let prover = &prover;
                 s.spawn(move || {
-                    while let Ok(shape) = shape_rx.lock().unwrap().recv() {
-                        let program = prover.program_from_shape(shape);
-                        program_tx.send(program).unwrap();
+                    while let Ok((i, shape)) = shape_rx.lock().unwrap().recv() {
+                        let program = catch_unwind(AssertUnwindSafe(|| {
+                            prover.program_from_shape(shape.clone())
+                        }));
+                        match program {
+                            Ok(program) => program_tx.send((i, program)).unwrap(),
+                            Err(e) => tracing::warn!(
+                                "Program generation failed for shape {:?}, with error: {:?}",
+                                shape,
+                                e
+                            ),
+                        }
                     }
                 });
             }
@@ -96,8 +108,9 @@ pub fn build_vk_map<C: SP1ProverComponents>(
                 let program_rx = &program_rx;
                 let prover = &prover;
                 s.spawn(move || {
-                    while let Ok(program) = program_rx.lock().unwrap().recv() {
-                        let (_, vk) = prover.compress_prover.setup(&program);
+                    while let Ok((i, program)) = program_rx.lock().unwrap().recv() {
+                        let (_, vk) = tracing::debug_span!("setup for program {}", i)
+                            .in_scope(|| prover.compress_prover.setup(&program));
                         let vk_digest = vk.hash_babybear();
                         vk_tx.send(vk_digest).unwrap();
                     }
@@ -106,9 +119,10 @@ pub fn build_vk_map<C: SP1ProverComponents>(
 
             // Generate shapes and send them to the compiler workers.
             generate_shapes()
-                .map(|shape| SP1CompressProgramShape::from_proof_shape(shape, height))
-                .for_each(|program_shape| {
-                    shape_tx.send(program_shape).unwrap();
+                .enumerate()
+                .map(|(i, shape)| (i, SP1CompressProgramShape::from_proof_shape(shape, height)))
+                .for_each(|(i, program_shape)| {
+                    shape_tx.send((i, program_shape)).unwrap();
                 });
 
             drop(shape_tx);
@@ -125,6 +139,28 @@ pub fn build_vk_map<C: SP1ProverComponents>(
         })
     };
     tracing::info!("compress vks generated, number of keys: {}", vk_map.len());
+    vk_map
+}
+
+pub fn build_vk_map_to_file<C: SP1ProverComponents>(
+    build_dir: PathBuf,
+    reduce_batch_size: usize,
+    dummy: bool,
+    num_compiler_workers: usize,
+    num_setup_workers: usize,
+    range_start: Option<usize>,
+    range_end: Option<usize>,
+) {
+    std::fs::create_dir_all(&build_dir).expect("failed to create build directory");
+
+    let vk_map = build_vk_map::<C>(
+        reduce_batch_size,
+        dummy,
+        num_compiler_workers,
+        num_setup_workers,
+        range_start,
+        range_end,
+    );
 
     // Save the vk map to a file.
     tracing::info!("saving vk map to file");
@@ -165,6 +201,7 @@ impl SP1ProofShape {
                     .get_all_shape_combinations(reduce_batch_size)
                     .map(Self::Compress),
             )
+            .chain(once(Self::Shrink(ShrinkAir::<BabyBear>::shrink_shape().into())))
     }
 
     pub fn dummy_vk_map<'a>(
@@ -183,9 +220,15 @@ impl SP1CompressProgramShape {
     pub fn from_proof_shape(shape: SP1ProofShape, height: usize) -> Self {
         match shape {
             SP1ProofShape::Recursion(proof_shape) => Self::Recursion(proof_shape.into()),
-            SP1ProofShape::Deferred(proof_shape) => Self::Deferred(proof_shape.into()),
+            SP1ProofShape::Deferred(proof_shape) => {
+                Self::Deferred(SP1DeferredShape::new(vec![proof_shape].into(), height))
+            }
             SP1ProofShape::Compress(proof_shapes) => Self::Compress(SP1CompressWithVkeyShape {
                 compress_shape: proof_shapes.into(),
+                merkle_tree_height: height,
+            }),
+            SP1ProofShape::Shrink(proof_shape) => Self::Shrink(SP1CompressWithVkeyShape {
+                compress_shape: vec![proof_shape].into(),
                 merkle_tree_height: height,
             }),
         }
@@ -211,6 +254,11 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                     SP1CompressWithVKeyWitnessValues::dummy(self.compress_prover.machine(), &shape);
                 self.compress_program(&input)
             }
+            SP1CompressProgramShape::Shrink(shape) => {
+                let input =
+                    SP1CompressWithVKeyWitnessValues::dummy(self.compress_prover.machine(), &shape);
+                self.shrink_program(&input)
+            }
         }
     }
 }
@@ -224,9 +272,9 @@ mod tests {
         let core_shape_config = CoreShapeConfig::default();
         let recursion_shape_config = RecursionShapeConfig::default();
         let reduce_batch_size = 2;
-        let num_compress_shapes =
+        let num_shapes =
             SP1ProofShape::generate(&core_shape_config, &recursion_shape_config, reduce_batch_size)
                 .count();
-        println!("Number of compress shapes: {}", num_compress_shapes);
+        println!("Number of compress shapes: {}", num_shapes);
     }
 }

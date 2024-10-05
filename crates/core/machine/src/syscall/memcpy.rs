@@ -84,14 +84,14 @@ impl<F: PrimeField32, NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength
         for event in events {
             let event: &MemCopyEvent = match NumWords::USIZE {
                 8 => {
-                    if let PrecompileEvent::MemCopy32(event) = event {
+                    if let (_, PrecompileEvent::MemCopy32(event)) = event {
                         event
                     } else {
                         unreachable!();
                     }
                 }
                 16 => {
-                    if let PrecompileEvent::MemCopy64(event) = event {
+                    if let (_, PrecompileEvent::MemCopy64(event)) = event {
                         event
                     } else {
                         unreachable!();

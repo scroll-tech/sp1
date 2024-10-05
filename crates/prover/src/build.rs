@@ -3,17 +3,20 @@ use std::{borrow::Borrow, path::PathBuf};
 use p3_baby_bear::BabyBear;
 use sp1_core_executor::SP1Context;
 use sp1_core_machine::io::SP1Stdin;
-use sp1_recursion_circuit_v2::machine::{SP1CompressWitnessValues, SP1WrapVerifier};
+use sp1_recursion_circuit::{
+    hash::FieldHasherVariable,
+    machine::{SP1CompressWitnessValues, SP1WrapVerifier},
+};
 use sp1_recursion_compiler::{
     config::OuterConfig,
     constraints::{Constraint, ConstraintCompiler},
     ir::Builder,
 };
 
-use sp1_recursion_core_v2::air::RecursionPublicValues;
-pub use sp1_recursion_core_v2::stark::utils::sp1_dev_mode;
+use sp1_recursion_core::air::RecursionPublicValues;
+pub use sp1_recursion_core::stark::sp1_dev_mode;
 
-pub use sp1_recursion_circuit_v2::witness::{OuterWitness, Witnessable};
+pub use sp1_recursion_circuit::witness::{OuterWitness, Witnessable};
 
 use sp1_recursion_gnark_ffi::{Groth16Bn254Prover, PlonkBn254Prover};
 use sp1_stark::{SP1ProverOpts, ShardProof, StarkVerifyingKey};
@@ -178,7 +181,25 @@ fn build_outer_circuit(template_input: &SP1CompressWitnessValues<OuterSC>) -> Ve
 
     let wrap_span = tracing::debug_span!("build wrap circuit").entered();
     let mut builder = Builder::<OuterConfig>::default();
+
+    // Get the value of the vk.
+    let template_vk = template_input.vks_and_proofs.first().unwrap().0.clone();
+    // Get an input variable.
     let input = template_input.read(&mut builder);
+    // Fix the `wrap_vk` value to be the same as the template `vk`. Since the chip information and
+    // the ordering is already a constant, we just need to constrain the commitment and pc_start.
+
+    // Get the vk variable from the input.
+    let vk = input.vks_and_proofs.first().unwrap().0.clone();
+    // Get the expected commitment.
+    let expected_commitment: [_; 1] = template_vk.commit.into();
+    let expected_commitment = expected_commitment.map(|x| builder.eval(x));
+    // Constrain `commit` to be the same as the template `vk`.
+    OuterSC::assert_digest_eq(&mut builder, expected_commitment, vk.commitment);
+    // Constrain `pc_start` to be the same as the template `vk`.
+    builder.assert_felt_eq(vk.pc_start, template_vk.pc_start);
+
+    // Verify the proof.
     SP1WrapVerifier::verify(&mut builder, &wrap_machine, input);
 
     let mut backend = ConstraintCompiler::<OuterConfig>::default();

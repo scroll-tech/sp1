@@ -4,7 +4,11 @@ use std::{cmp::Reverse, collections::BTreeSet, fmt::Debug};
 
 use hashbrown::HashMap;
 use itertools::Itertools;
-use p3_matrix::{dense::RowMajorMatrixView, stack::VerticalPair};
+use p3_matrix::{
+    dense::{RowMajorMatrix, RowMajorMatrixView},
+    stack::VerticalPair,
+    Matrix,
+};
 use serde::{Deserialize, Serialize};
 
 use super::{Challenge, Com, OpeningProof, StarkGenericConfig, Val};
@@ -69,7 +73,7 @@ pub struct ShardOpenedValues<T> {
 /// The maximum number of elements that can be stored in the public values vec.  Both SP1 and
 /// recursive proofs need to pad their public values vec to this length.  This is required since the
 /// recursion verification program expects the public values vec to be fixed length.
-pub const PROOF_MAX_NUM_PVS: usize = 371;
+pub const PROOF_MAX_NUM_PVS: usize = 363;
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "")]
@@ -85,6 +89,22 @@ pub struct ShardProof<SC: StarkGenericConfig> {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub struct ProofShape {
     pub chip_information: Vec<(String, usize)>,
+}
+
+impl ProofShape {
+    #[must_use]
+    pub fn from_traces<V: Clone + Send + Sync>(
+        global_traces: Option<&[(String, RowMajorMatrix<V>)]>,
+        local_traces: &[(String, RowMajorMatrix<V>)],
+    ) -> Self {
+        global_traces
+            .into_iter()
+            .flatten()
+            .chain(local_traces.iter())
+            .map(|(name, trace)| (name.clone(), trace.height().ilog2() as usize))
+            .sorted_by_key(|(_, height)| *height)
+            .collect()
+    }
 }
 
 impl<SC: StarkGenericConfig> Debug for ShardProof<SC> {
@@ -212,5 +232,15 @@ impl FromIterator<(String, usize)> for ProofShape {
                 .map(|(Reverse(log_degree), name)| (name, log_degree))
                 .collect(),
         }
+    }
+}
+
+impl IntoIterator for ProofShape {
+    type Item = (String, usize);
+
+    type IntoIter = <Vec<(String, usize)> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.chip_information.into_iter()
     }
 }

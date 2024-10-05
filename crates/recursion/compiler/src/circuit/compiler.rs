@@ -6,12 +6,14 @@ use p3_field::{
     AbstractExtensionField, AbstractField, Field, PrimeField, PrimeField64, TwoAdicField,
 };
 use sp1_core_machine::utils::{sp1_debug_mode, SpanBuilder};
-use sp1_recursion_core::air::{Block, RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS};
-use sp1_recursion_core_v2::{BaseAluInstr, BaseAluOpcode};
+use sp1_recursion_core::{
+    air::{Block, RecursionPublicValues, RECURSIVE_PROOF_NUM_PV_ELTS},
+    BaseAluInstr, BaseAluOpcode,
+};
 use std::{borrow::Borrow, collections::HashMap, iter::repeat, mem::transmute};
 use vec_map::VecMap;
 
-use sp1_recursion_core_v2::*;
+use sp1_recursion_core::*;
 
 use crate::prelude::*;
 
@@ -778,16 +780,13 @@ mod tests {
     use rand::{rngs::StdRng, Rng, SeedableRng};
 
     use sp1_core_machine::utils::{run_test_machine, setup_logger};
-    use sp1_recursion_core_v2::{machine::RecursionAir, RecursionProgram, Runtime};
+    use sp1_recursion_core::{machine::RecursionAir, RecursionProgram, Runtime};
     use sp1_stark::{
         baby_bear_poseidon2::BabyBearPoseidon2, inner_perm, BabyBearPoseidon2Inner, InnerHash,
         StarkGenericConfig,
     };
 
-    use crate::{
-        asm::{AsmBuilder, AsmConfig},
-        circuit::CircuitV2Builder,
-    };
+    use crate::circuit::{AsmBuilder, AsmConfig, CircuitV2Builder};
 
     use super::*;
 
@@ -815,7 +814,7 @@ mod tests {
 
         // Run with the poseidon2 wide chip.
         let wide_machine =
-            RecursionAir::<_, 3, 0>::machine_wide_with_all_chips(BabyBearPoseidon2::default());
+            RecursionAir::<_, 3>::machine_wide_with_all_chips(BabyBearPoseidon2::default());
         let (pk, vk) = wide_machine.setup(&program);
         let result = run_test_machine(vec![record.clone()], wide_machine, pk, vk);
         if let Err(e) = result {
@@ -823,7 +822,7 @@ mod tests {
         }
 
         // Run with the poseidon2 skinny chip.
-        let skinny_machine = RecursionAir::<_, 9, 0>::machine_skinny_with_all_chips(
+        let skinny_machine = RecursionAir::<_, 9>::machine_skinny_with_all_chips(
             BabyBearPoseidon2::ultra_compressed(),
         );
         let (pk, vk) = skinny_machine.setup(&program);

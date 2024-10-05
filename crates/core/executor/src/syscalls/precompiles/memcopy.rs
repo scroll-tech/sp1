@@ -27,6 +27,7 @@ impl<NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength + Send + Sync> S
         src: u32,
         dst: u32,
     ) -> Option<u32> {
+        let start_clk = rt.clk;
         let (read, read_bytes) = rt.mr_slice(src, NumWords::USIZE);
 
         // dst == src is supported, even it is actually a no-op.
@@ -44,14 +45,20 @@ impl<NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength + Send + Sync> S
             write_records: write,
             local_mem_access: rt.postprocess(),
         };
-        rt.record_mut().add_precompile_event(
-            syscall_code,
-            match NumWords::USIZE {
-                8 => PrecompileEvent::MemCopy32(event),
-                16 => PrecompileEvent::MemCopy64(event),
-                _ => panic!("invalid uszie {}", NumWords::USIZE),
-            },
+        let precompile_event = match NumWords::USIZE {
+            8 => PrecompileEvent::MemCopy32(event),
+            16 => PrecompileEvent::MemCopy64(event),
+            _ => panic!("invalid uszie {}", NumWords::USIZE),
+        };
+        let syscall_event = rt.rt.syscall_event(
+            start_clk,
+            syscall_code.syscall_id(),
+            src,
+            dst,
+            rt.syscall_lookup_id,
         );
+
+        rt.record_mut().add_precompile_event(syscall_code, syscall_event, precompile_event);
 
         None
     }

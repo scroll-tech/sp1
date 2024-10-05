@@ -77,7 +77,7 @@ impl<F: PrimeField32> MachineAir<F> for Bn254ScalarMacChip {
         let mut new_byte_lookup_events = vec![];
 
         for event in events {
-            let event = if let PrecompileEvent::Bn254ScalarMac(event) = event {
+            let event = if let (_, PrecompileEvent::Bn254ScalarMac(event)) = event {
                 event
             } else {
                 unreachable!();

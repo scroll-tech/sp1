@@ -13,8 +13,16 @@ impl Syscall for Bn254ScalarMacSyscall {
         arg1: u32,
         arg2: u32,
     ) -> Option<u32> {
+        let start_clk = rt.clk;
         let event = create_bn254_scalar_arith_event(rt, arg1, arg2, Bn254FieldOperation::Mac);
-        rt.record_mut().add_precompile_event(syscall_code, PrecompileEvent::Bn254ScalarMac(event));
+        let syscall_event =
+            rt.rt.syscall_event(start_clk, syscall_code.syscall_id(), arg1, arg2, event.lookup_id);
+
+        rt.record_mut().add_precompile_event(
+            syscall_code,
+            syscall_event,
+            PrecompileEvent::Bn254ScalarMac(event),
+        );
 
         None
     }
@@ -33,8 +41,15 @@ impl Syscall for Bn254ScalarMulSyscall {
         arg1: u32,
         arg2: u32,
     ) -> Option<u32> {
+        let start_clk = rt.clk;
         let event = create_bn254_scalar_arith_event(rt, arg1, arg2, Bn254FieldOperation::Mul);
-        rt.record_mut().add_precompile_event(syscall_code, PrecompileEvent::Bn254ScalarMul(event));
+        let syscall_event =
+            rt.rt.syscall_event(start_clk, syscall_code.syscall_id(), arg1, arg2, event.lookup_id);
+        rt.record_mut().add_precompile_event(
+            syscall_code,
+            syscall_event,
+            PrecompileEvent::Bn254ScalarMul(event),
+        );
 
         None
     }
