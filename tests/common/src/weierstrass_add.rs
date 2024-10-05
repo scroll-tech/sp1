@@ -1,5 +1,5 @@
-use sp1_lib::utils::{AffinePoint, WeierstrassAffinePoint};
 use num_bigint::BigUint;
+use sp1_lib::utils::{AffinePoint, WeierstrassAffinePoint};
 
 /// Test all of the potential special cases for addition for Weierstrass elliptic curves.
 pub fn test_weierstrass_add<P: AffinePoint<N> + WeierstrassAffinePoint<N>, const N: usize>(
@@ -24,11 +24,7 @@ pub fn test_weierstrass_add<P: AffinePoint<N> + WeierstrassAffinePoint<N>, const
     let mut b = orig_infinity.clone();
     let b2 = orig_infinity.clone();
     b.complete_add_assign(&b2);
-    assert_eq!(
-        b.limbs_ref(),
-        orig_infinity.limbs_ref(),
-        "Adding two infinity points should result in infinity"
-    );
+    assert!(b.is_infinity(), "Adding two infinity points should result in infinity");
 
     // Case 2: First point is infinity
     let mut b = orig_infinity.clone();
@@ -64,22 +60,21 @@ pub fn test_weierstrass_add<P: AffinePoint<N> + WeierstrassAffinePoint<N>, const
     // Case 5: Points are negations of each other.
     // Create a point that is the negation of a_point.
     let a_point_le_bytes = a_point.to_le_bytes();
-    let y_biguint = BigUint::from_bytes_le(&a_point_le_bytes[N*2..]);
-    let modulus_biguint = BigUint::from_bytes_le(&modulus);
+    let y_biguint = BigUint::from_bytes_le(&a_point_le_bytes[N * 2..]);
+    let modulus_biguint = BigUint::from_bytes_le(modulus);
 
     // Negate y.
     let negated_y_biguint = (&modulus_biguint - &y_biguint) % &modulus_biguint;
 
     // Create a point using the negated y.
-    let mut combined_negation_point_bytes = a_point_le_bytes[..N*2].to_vec();
+    let mut combined_negation_point_bytes = a_point_le_bytes[..N * 2].to_vec();
     combined_negation_point_bytes.extend_from_slice(&negated_y_biguint.to_bytes_le());
     let negation_point = P::from_le_bytes(&combined_negation_point_bytes);
 
     let mut a_point_clone = a_point.clone();
     a_point_clone.complete_add_assign(&negation_point);
-    assert_eq!(
-        a_point_clone.limbs_ref(),
-        &[0; N],
+    assert!(
+        a_point_clone.is_infinity(),
         "Adding a point to its negation should result in infinity"
     );
 

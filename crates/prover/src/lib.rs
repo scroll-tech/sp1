@@ -34,6 +34,7 @@ use std::{
 
 use lru::LruCache;
 
+use shapes::VkData;
 use tracing::instrument;
 
 use p3_baby_bear::BabyBear;
@@ -111,8 +112,8 @@ const COMPRESS_CACHE_SIZE: usize = 3;
 
 pub const REDUCE_BATCH_SIZE: usize = 2;
 
-const VK_MAP_BYTES: &[u8] = include_bytes!("../vk_map.bin");
-const MERKLE_TREE_BYTES: &[u8] = include_bytes!("../merkle_tree.bin");
+const VK_DATA_BYTES: &[u8] = include_bytes!("../vk_data.bin");
+const DUMMY_VK_DATA_BYTES: &[u8] = include_bytes!("../dummy_vk_data.bin");
 
 pub type CompressAir<F> = RecursionAir<F, COMPRESS_DEGREE>;
 pub type ShrinkAir<F> = RecursionAir<F, SHRINK_DEGREE>;
@@ -197,12 +198,6 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         )
         .expect("PROVER_COMPRESS_CACHE_SIZE must be a non-zero usize");
 
-        let allowed_vk_map =
-            bincode::deserialize(VK_MAP_BYTES).expect("failed to deserialize vk map");
-
-        let (root, merkle_tree) =
-            bincode::deserialize(MERKLE_TREE_BYTES).expect("failed to deserialize merkle tree");
-
         let core_shape_config = env::var("FIX_CORE_SHAPES")
             .map(|v| v.eq_ignore_ascii_case("true"))
             .unwrap_or(true)
@@ -214,7 +209,14 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
             .then_some(RecursionShapeConfig::default());
 
         let vk_verification =
-            env::var("VERIFY_VK").map(|v| v.eq_ignore_ascii_case("true")).unwrap_or(false);
+            env::var("VERIFY_VK").map(|v| v.eq_ignore_ascii_case("true")).unwrap_or(true);
+
+        let vk_data_bytes = if vk_verification { VK_DATA_BYTES } else { DUMMY_VK_DATA_BYTES };
+
+        let vk_data: VkData =
+            bincode::deserialize(vk_data_bytes).expect("failed to deserialize vk data");
+
+        let VkData { vk_map: allowed_vk_map, root, merkle_tree } = vk_data;
 
         Self {
             core_prover,
@@ -319,7 +321,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         &self,
         input: &SP1RecursionWitnessValues<CoreSC>,
     ) -> Arc<RecursionProgram<BabyBear>> {
-        let mut cache = self.recursion_programs.lock().unwrap();
+        let mut cache = self.recursion_programs.lock().unwrap_or_else(|e| e.into_inner());
         cache
             .get_or_insert(input.shape(), || {
                 let misses = self.recursion_cache_misses.fetch_add(1, Ordering::Relaxed);
@@ -327,13 +329,6 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 // Get the operations.
                 let builder_span = tracing::debug_span!("build recursion program").entered();
                 let mut builder = Builder::<InnerConfig>::default();
-
-                // TODO: remove comment or make a test flag.
-                // let dummy_input = SP1RecursionWitnessValues::<CoreSC>::dummy(
-                //     self.core_prover.machine(),
-                //     &input.shape(),
-                // );
-                // let input = dummy_input.read(&mut builder);
 
                 let input = input.read(&mut builder);
                 SP1RecursiveVerifier::verify(&mut builder, self.core_prover.machine(), input);
@@ -358,7 +353,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         &self,
         input: &SP1CompressWithVKeyWitnessValues<InnerSC>,
     ) -> Arc<RecursionProgram<BabyBear>> {
-        let mut cache = self.compress_programs.lock().unwrap();
+        let mut cache = self.compress_programs.lock().unwrap_or_else(|e| e.into_inner());
         cache
             .get_or_insert(input.shape(), || {
                 let misses = self.compress_cache_misses.fetch_add(1, Ordering::Relaxed);
@@ -367,20 +362,8 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 let builder_span = tracing::debug_span!("build compress program").entered();
                 let mut builder = Builder::<InnerConfig>::default();
 
-                // // TODO: remove comment or make a test flag.
-                // let dummy_input = SP1CompressWithVKeyWitnessValues::<CoreSC>::dummy(
-                //     self.compress_prover.machine(),
-                //     &input.shape(),
-                // );
-                // let input = dummy_input.read(&mut builder);
-
+                // read the input.
                 let input = input.read(&mut builder);
-
-                // Attest that the merkle tree root is correct.
-                let root = input.merkle_var.root;
-                for (val, expected) in root.iter().zip(self.vk_root.iter()) {
-                    builder.assert_felt_eq(*val, *expected);
-                }
                 // Verify the proof.
                 SP1CompressWithVKeyVerifier::verify(
                     &mut builder,
@@ -414,12 +397,6 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         let builder_span = tracing::debug_span!("build shrink program").entered();
         let mut builder = Builder::<InnerConfig>::default();
         let input = input.read(&mut builder);
-
-        // Attest that the merkle tree root is correct.
-        let root = input.merkle_var.root;
-        for (val, expected) in root.iter().zip(self.vk_root.iter()) {
-            builder.assert_felt_eq(*val, *expected);
-        }
         // Verify the proof.
         SP1CompressRootVerifierWithVKey::verify(
             &mut builder,
@@ -501,11 +478,6 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         input_read_span.exit();
         let verify_span = tracing::debug_span!("Verify deferred program").entered();
 
-        // Attest that the merkle tree root is correct.
-        let root = input.vk_merkle_data.root;
-        for (val, expected) in root.iter().zip(self.vk_root.iter()) {
-            builder.assert_felt_eq(*val, *expected);
-        }
         // Verify the proof.
         SP1DeferredVerifier::verify(
             &mut builder,
@@ -547,6 +519,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 initial_reconstruct_challenger: reconstruct_challenger.clone(),
                 is_complete,
                 is_first_shard: batch_idx == 0,
+                vk_root: self.vk_root,
             });
             assert_eq!(reconstruct_challenger.input_buffer.len(), 0);
             assert_eq!(reconstruct_challenger.sponge_state.len(), 16);
@@ -1189,9 +1162,6 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
         &self,
         input: SP1CompressWitnessValues<CoreSC>,
     ) -> SP1CompressWithVKeyWitnessValues<CoreSC> {
-        // let (vk_indices, vk_digest_values) =
-        //     input.vks_and_proofs.iter().map(|(vk, _)| (0, vk.hash_babybear())).collect::<Vec<_>>();
-
         let num_vks = self.allowed_vk_map.len();
         let (vk_indices, vk_digest_values): (Vec<_>, Vec<_>) = if self.vk_verification {
             input
@@ -1199,7 +1169,9 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
                 .iter()
                 .map(|(vk, _)| {
                     let vk_digest = vk.hash_babybear();
+                    tracing::info!("vk_digest: {:?}", vk_digest);
                     let index = self.allowed_vk_map.get(&vk_digest).expect("vk not allowed");
+                    tracing::info!("vk found at index: {:?}", index);
                     (index, vk_digest)
                 })
                 .unzip()
@@ -1244,7 +1216,11 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
 #[cfg(any(test, feature = "export-tests"))]
 pub mod tests {
 
-    use std::{fs::File, io::Read, io::Write};
+    use std::{
+        collections::BTreeSet,
+        fs::File,
+        io::{Read, Write},
+    };
 
     use super::*;
 
@@ -1253,6 +1229,7 @@ pub mod tests {
     use build::{build_constraints_and_witness, try_build_groth16_bn254_artifacts_dev};
     use p3_field::PrimeField32;
 
+    use shapes::SP1ProofShape;
     use sp1_recursion_core::air::RecursionPublicValues;
 
     #[cfg(test)]
@@ -1308,6 +1285,18 @@ pub mod tests {
         tracing::info!("prove core");
         let core_proof = prover.prove_core(&pk, &stdin, opts, context)?;
         let public_values = core_proof.public_values.clone();
+
+        if env::var("COLLECT_SHAPES").is_ok() {
+            let mut shapes = BTreeSet::new();
+            for proof in core_proof.proof.0.iter() {
+                let shape = SP1ProofShape::Recursion(proof.shape());
+                tracing::info!("shape: {:?}", shape);
+                shapes.insert(shape);
+            }
+
+            let mut file = File::create("../shapes.bin").unwrap();
+            bincode::serialize_into(&mut file, &shapes).unwrap();
+        }
 
         if verify {
             tracing::info!("verify core");
