@@ -346,9 +346,9 @@ mod tests {
 
         println!("Number of compress shapes: {}", all_shapes.len());
 
-        let test_shapes: BTreeSet<SP1ProofShape> = bincode::deserialize(SHAPE_BYTES).unwrap();
+        let test_shapes: Vec<SP1ProofShape> = bincode::deserialize(SHAPE_BYTES).unwrap();
         for shape in test_shapes {
-            assert!(all_shapes.contains(&shape), "shape {:?} not found", shape);
+            assert!(all_shapes.contains(&shape));
         }
     }
 }

@@ -1216,11 +1216,7 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
 #[cfg(any(test, feature = "export-tests"))]
 pub mod tests {
 
-    use std::{
-        collections::BTreeSet,
-        fs::File,
-        io::{Read, Write},
-    };
+    use std::{fs::File, io::Read, io::Write};
 
     use super::*;
 
@@ -1282,21 +1278,20 @@ pub mod tests {
         tracing::info!("setup elf");
         let (pk, vk) = prover.setup(elf);
 
+        // let mut shapes = Vec::new();
+
         tracing::info!("prove core");
         let core_proof = prover.prove_core(&pk, &stdin, opts, context)?;
         let public_values = core_proof.public_values.clone();
 
-        if env::var("COLLECT_SHAPES").is_ok() {
-            let mut shapes = BTreeSet::new();
-            for proof in core_proof.proof.0.iter() {
-                let shape = SP1ProofShape::Recursion(proof.shape());
-                tracing::info!("shape: {:?}", shape);
-                shapes.insert(shape);
-            }
+        // for proof in core_proof.proof.0.iter() {
+        //     let shape = SP1ProofShape::Recursion(proof.shape());
+        //     tracing::info!("shape: {:?}", shape);
+        //     shapes.push(shape);
+        // }
 
-            let mut file = File::create("../shapes.bin").unwrap();
-            bincode::serialize_into(&mut file, &shapes).unwrap();
-        }
+        // let mut file = File::create("../shapes.bin").unwrap();
+        // bincode::serialize_into(&mut file, &shapes).unwrap();
 
         if verify {
             tracing::info!("verify core");
