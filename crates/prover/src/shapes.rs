@@ -86,8 +86,7 @@ pub fn build_vk_map<C: SP1ProverComponents>(
                 .collect::<BTreeSet<_>>();
         let num_shapes = all_shapes.len();
 
-        // let height = num_shapes.next_power_of_two().ilog2() as usize;
-        let height = 21;
+        let height = num_shapes.next_power_of_two().ilog2() as usize;
         let chunk_size = indices_set.as_ref().map(|indices| indices.len()).unwrap_or(num_shapes);
 
         std::thread::scope(|s| {
@@ -128,32 +127,23 @@ pub fn build_vk_map<C: SP1ProverComponents>(
                 s.spawn(move || {
                     let mut done = 0;
                     while let Ok((i, program, is_shrink)) = program_rx.lock().unwrap().recv() {
-                        let setup_result = tracing::debug_span!("setup for program {}", i)
-                            .in_scope(|| {
-                                catch_unwind(AssertUnwindSafe(|| {
-                                    if is_shrink {
-                                        prover.shrink_prover.setup(&program).1
-                                    } else {
-                                        prover.compress_prover.setup(&program).1
-                                    }
-                                }))
-                            });
+                        let vk = tracing::debug_span!("setup for program {}", i).in_scope(|| {
+                            if is_shrink {
+                                prover.shrink_prover.setup(&program).1
+                            } else {
+                                prover.compress_prover.setup(&program).1
+                            }
+                        });
                         done += 1;
-                        match setup_result {
-                            Ok(vk) => {
-                                let vk_digest = vk.hash_babybear();
-                                tracing::info!(
-                                    "program {} = {:?}, {}% done",
-                                    i,
-                                    vk_digest,
-                                    done * 100 / chunk_size
-                                );
-                                vk_tx.send(vk_digest).unwrap();
-                            }
-                            Err(e) => {
-                                tracing::warn!("setup for program {} failed: {:?}", i, e);
-                            }
-                        }
+
+                        let vk_digest = vk.hash_babybear();
+                        tracing::info!(
+                            "program {} = {:?}, {}% done",
+                            i,
+                            vk_digest,
+                            done * 100 / chunk_size
+                        );
+                        vk_tx.send(vk_digest).unwrap();
                     }
                 });
             }
@@ -238,7 +228,6 @@ impl SP1ProofShape {
                     .get_all_shape_combinations(1)
                     .map(|mut x| Self::Shrink(x.pop().unwrap())),
             )
-            .take(10000)
     }
 
     pub fn dummy_vk_map<'a>(
