@@ -272,7 +272,7 @@ where
             local.arg1_ptr,
             local.arg2_ptr,
             local.is_real,
-            InteractionScope::Global,
+            InteractionScope::Local,
         );
     }
 }
