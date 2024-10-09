@@ -109,7 +109,7 @@ const COMPRESS_CACHE_SIZE: usize = 3;
 pub const REDUCE_BATCH_SIZE: usize = 2;
 
 const SHAPES_URL_PREFIX: &str = "https://sp1-circuits.s3.us-east-2.amazonaws.com/shapes";
-const SHAPES_VERSION: &str = "5202143e0";
+const SHAPES_VERSION: &str = "146079e0e";
 lazy_static! {
     static ref SHAPES_INIT: Once = Once::new();
 }
@@ -233,16 +233,16 @@ impl<C: SP1ProverComponents> SP1Prover<C> {
 
         let core_shape_config = env::var("FIX_CORE_SHAPES")
             .map(|v| v.eq_ignore_ascii_case("true"))
-            .unwrap_or(true)
+            .unwrap_or(false)
             .then_some(CoreShapeConfig::default());
 
         let recursion_shape_config = env::var("FIX_RECURSION_SHAPES")
             .map(|v| v.eq_ignore_ascii_case("true"))
-            .unwrap_or(true)
+            .unwrap_or(false)
             .then_some(RecursionShapeConfig::default());
 
         let vk_verification =
-            env::var("VERIFY_VK").map(|v| v.eq_ignore_ascii_case("true")).unwrap_or(true);
+            env::var("VERIFY_VK").map(|v| v.eq_ignore_ascii_case("true")).unwrap_or(false);
 
         tracing::info!("vk verification: {}", vk_verification);
 
