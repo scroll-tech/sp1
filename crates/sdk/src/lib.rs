@@ -70,8 +70,8 @@ impl ProverClient {
     /// let client = ProverClient::new();
     /// ```
     pub fn new() -> Self {
-        #[cfg(debug_assertions)]
-        panic!("sp1-sdk must be built in release mode. please compile with the --release flag.");
+        //#[cfg(debug_assertions)]
+        //panic!("sp1-sdk must be built in release mode. please compile with the --release flag.");
 
         #[allow(unreachable_code)]
         match env::var("SP1_PROVER").unwrap_or("local".to_string()).to_lowercase().as_str() {
