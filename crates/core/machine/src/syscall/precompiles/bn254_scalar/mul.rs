@@ -192,8 +192,8 @@ where
 
         builder.eval_memory_access_slice(
             local.shard,
-            local.clk.into(),
-            local.p_ptr + AB::Expr::one(),
+            local.clk.into() + AB::Expr::one(),
+            local.p_ptr,
             &local.p_access,
             local.is_real,
         );
