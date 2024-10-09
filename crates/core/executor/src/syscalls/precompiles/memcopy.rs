@@ -38,7 +38,7 @@ impl<NumWords: ArrayLength + Send + Sync, NumBytes: ArrayLength + Send + Sync> S
         let event = MemCopyEvent {
             lookup_id: rt.syscall_lookup_id,
             shard: rt.current_shard(),
-            clk: rt.clk,
+            clk: start_clk,
             src_ptr: src,
             dst_ptr: dst,
             read_records: read,
