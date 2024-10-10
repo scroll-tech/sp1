@@ -1,7 +1,7 @@
 use p3_baby_bear::BabyBear;
 use sp1_core_executor::{syscalls::SyscallCode, ExecutionReport, Opcode};
 
-use crate::riscv::RiscvAirDiscriminants;
+use crate::{riscv::RiscvAirDiscriminants, syscall::precompiles::bn254_scalar};
 
 use super::RiscvAir;
 
@@ -122,13 +122,36 @@ impl CostEstimator for ExecutionReport {
         total_area += (bn254_fp2_mul_events as u64) * costs[&RiscvAirDiscriminants::Bn254Fp2Mul];
         total_chips += 1;
 
+        let bn254_scalar_mul_events = self.syscall_counts[SyscallCode::BN254_SCALAR_MUL];
+        total_area +=
+            (bn254_scalar_mul_events as u64) * costs[&RiscvAirDiscriminants::Bn254ScalarMul];
+        total_chips += 1;
+
+        let bn254_scalar_mac_events = self.syscall_counts[SyscallCode::BN254_SCALAR_MAC];
+        total_area +=
+            (bn254_scalar_mac_events as u64) * costs[&RiscvAirDiscriminants::Bn254ScalarMac];
+        total_chips += 1;
+
+        let mem_copy_32_events = self.syscall_counts[SyscallCode::MEMCPY_32];
+        total_area += (mem_copy_32_events as u64) * costs[&RiscvAirDiscriminants::MemCopy32];
+        total_chips += 1;
+
+        let mem_copy_64_events = self.syscall_counts[SyscallCode::MEMCPY_64];
+        total_area += (mem_copy_64_events as u64) * costs[&RiscvAirDiscriminants::MemCopy64];
+        total_chips += 1;
+
         let bls12381_decompress_events = self.syscall_counts[SyscallCode::BLS12381_DECOMPRESS];
         total_area +=
             (bls12381_decompress_events as u64) * costs[&RiscvAirDiscriminants::Bls12381Decompress];
         total_chips += 1;
 
         let syscall_events = self.syscall_counts.values().sum::<u64>();
-        total_area += (syscall_events as u64) * costs[&RiscvAirDiscriminants::Syscall];
+        total_area += (syscall_events as u64) * costs[&RiscvAirDiscriminants::SyscallCore];
+        total_chips += 1;
+
+        let syscall_precompile_events = self.syscall_counts.len();
+        total_area +=
+            (syscall_precompile_events as u64) * costs[&RiscvAirDiscriminants::SyscallPrecompile];
         total_chips += 1;
 
         let divrem_events = self.opcode_counts[Opcode::DIV]

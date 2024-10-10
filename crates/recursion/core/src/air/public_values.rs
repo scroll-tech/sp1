@@ -128,6 +128,9 @@ pub struct RecursionPublicValues<T> {
     /// The commitment to the sp1 program being proven.
     pub sp1_vk_digest: [T; DIGEST_SIZE],
 
+    /// The root of the vk merkle tree.
+    pub vk_root: [T; DIGEST_SIZE],
+
     /// The leaf challenger containing the entropy from the main trace commitment.
     pub leaf_challenger: ChallengerPublicValues<T>,
 
@@ -142,12 +145,12 @@ pub struct RecursionPublicValues<T> {
     /// shard, i.e. a shard that contains the `cpu` chip.
     pub contains_execution_shard: T,
 
-    /// The digest of all the previous public values elements.
-    pub digest: [T; DIGEST_SIZE],
-
     /// The exit code of the program.  Note that this is not part of the public values digest,
     /// since it's value will be individually constrained.
     pub exit_code: T,
+
+    /// The digest of all the previous public values elements.
+    pub digest: [T; DIGEST_SIZE],
 }
 
 /// Converts the public values to an array of elements.

@@ -4,7 +4,7 @@ use std::{
     mem::size_of,
 };
 
-use crate::air::MemoryAirBuilder;
+use crate::{air::MemoryAirBuilder, utils::zeroed_f_vec};
 use generic_array::GenericArray;
 use itertools::Itertools;
 use num::{BigUint, Zero};
@@ -100,14 +100,14 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
         let mut rows = Vec::new();
         let mut new_byte_lookup_events = Vec::new();
 
-        for event in events {
+        for (_, event) in events {
             let event = match (P::FIELD_TYPE, event) {
                 (FieldType::Bn254, PrecompileEvent::Bn254Fp(event)) => event,
                 (FieldType::Bls12381, PrecompileEvent::Bls12381Fp(event)) => event,
                 _ => unreachable!(),
             };
 
-            let mut row = vec![F::zero(); num_fp_cols::<P>()];
+            let mut row = zeroed_f_vec(num_fp_cols::<P>());
             let cols: &mut FpOpCols<F, P> = row.as_mut_slice().borrow_mut();
 
             let modulus = &BigUint::from_bytes_le(P::MODULUS);
@@ -147,7 +147,7 @@ impl<F: PrimeField32, P: FpOpField> MachineAir<F> for FpOpChip<P> {
         pad_rows_fixed(
             &mut rows,
             || {
-                let mut row = vec![F::zero(); num_fp_cols::<P>()];
+                let mut row = zeroed_f_vec(num_fp_cols::<P>());
                 let cols: &mut FpOpCols<F, P> = row.as_mut_slice().borrow_mut();
                 let zero = BigUint::zero();
                 cols.is_add = F::from_canonical_u8(1);
@@ -295,7 +295,7 @@ where
             local.x_ptr,
             local.y_ptr,
             local.is_real,
-            InteractionScope::Global,
+            InteractionScope::Local,
         );
     }
 }

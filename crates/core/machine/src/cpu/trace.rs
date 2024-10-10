@@ -22,7 +22,7 @@ use super::{
     columns::{CPU_COL_MAP, NUM_CPU_COLS},
     CpuChip,
 };
-use crate::{cpu::columns::CpuCols, memory::MemoryCols};
+use crate::{cpu::columns::CpuCols, memory::MemoryCols, utils::zeroed_f_vec};
 
 impl<F: PrimeField32> MachineAir<F> for CpuChip {
     type Record = ExecutionRecord;
@@ -38,7 +38,7 @@ impl<F: PrimeField32> MachineAir<F> for CpuChip {
         input: &ExecutionRecord,
         _: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
-        let mut values = vec![F::zero(); input.cpu_events.len() * NUM_CPU_COLS];
+        let mut values = zeroed_f_vec(input.cpu_events.len() * NUM_CPU_COLS);
 
         let chunk_size = std::cmp::max(input.cpu_events.len() / num_cpus::get(), 1);
         values.chunks_mut(chunk_size * NUM_CPU_COLS).enumerate().par_bridge().for_each(
@@ -512,9 +512,17 @@ impl CpuChip {
             }
 
             // Write the syscall nonce.
-            ecall_cols.syscall_nonce = F::from_canonical_u32(
-                nonce_lookup.get(&event.syscall_lookup_id).copied().unwrap_or_default(),
+            let syscall_nonce =
+                nonce_lookup.get(&event.syscall_lookup_id).copied().unwrap_or_default();
+            ecall_cols.syscall_nonce = F::from_canonical_u32(syscall_nonce);
+
+            /*
+            log::info!(
+                "populate_ecall syscall_lookup_id {} syscall_nonce {} syscall_id {syscall_id:?}",
+                event.syscall_lookup_id,
+                syscall_nonce
             );
+            */
 
             is_halt = syscall_id == F::from_canonical_u32(SyscallCode::HALT.syscall_id());
 
@@ -540,7 +548,8 @@ impl CpuChip {
     fn pad_to_power_of_two<F: PrimeField32>(&self, shape: &Option<CoreShape>, values: &mut Vec<F>) {
         let n_real_rows = values.len() / NUM_CPU_COLS;
         let padded_nb_rows = if let Some(shape) = shape {
-            1 << shape.inner[&MachineAir::<F>::name(self)]
+            let name = MachineAir::<F>::name(self);
+            1 << shape.inner.get(&name).expect(&format!("fail to get shape of {}", name))
         } else if n_real_rows < 16 {
             16
         } else {

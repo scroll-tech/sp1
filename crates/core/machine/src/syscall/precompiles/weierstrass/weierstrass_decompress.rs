@@ -4,7 +4,7 @@ use core::{
 };
 use std::fmt::Debug;
 
-use crate::air::MemoryAirBuilder;
+use crate::{air::MemoryAirBuilder, utils::zeroed_f_vec};
 use generic_array::GenericArray;
 use num::{BigUint, Zero};
 use p3_air::{Air, AirBuilder, BaseAir};
@@ -159,14 +159,14 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
 
         let modulus = E::BaseField::modulus();
 
-        for event in events {
+        for (_, event) in events {
             let event = match (E::CURVE_TYPE, event) {
                 (CurveType::Secp256k1, PrecompileEvent::Secp256k1Decompress(event)) => event,
                 (CurveType::Bls12381, PrecompileEvent::Bls12381Decompress(event)) => event,
                 _ => panic!("Unsupported curve"),
             };
 
-            let mut row = vec![F::zero(); width];
+            let mut row = zeroed_f_vec(width);
             let cols: &mut WeierstrassDecompressCols<F, E::BaseField> =
                 row[0..weierstrass_width].borrow_mut();
 
@@ -244,7 +244,7 @@ impl<F: PrimeField32, E: EllipticCurve + WeierstrassParameters> MachineAir<F>
         pad_rows_fixed(
             &mut rows,
             || {
-                let mut row = vec![F::zero(); width];
+                let mut row = zeroed_f_vec(width);
                 let cols: &mut WeierstrassDecompressCols<F, E::BaseField> =
                     row.as_mut_slice()[0..weierstrass_width].borrow_mut();
 
@@ -502,7 +502,7 @@ where
             local.ptr,
             local.sign_bit,
             local.is_real,
-            InteractionScope::Global,
+            InteractionScope::Local,
         );
     }
 }

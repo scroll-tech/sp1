@@ -164,11 +164,8 @@ impl ExecutionRecord {
                 .collect::<Vec<_>>();
             shards.append(&mut event_shards);
         }
-        // _ = last_pct;
 
         if last {
-            // shards.push(last_shard);
-
             self.global_memory_initialize_events.sort_by_key(|event| event.addr);
             self.global_memory_finalize_events.sort_by_key(|event| event.addr);
 
@@ -214,13 +211,15 @@ impl ExecutionRecord {
     /// Return the number of rows needed for a chip, according to the proof shape specified in the
     /// struct.
     pub fn fixed_log2_rows<F: PrimeField, A: MachineAir<F>>(&self, air: &A) -> Option<usize> {
-        self.shape.as_ref().and_then(|shape| {
-            let log2_rows = shape.inner.get(&air.name()).copied();
-            if log2_rows.is_none() {
-                tracing::warn!("Chip {} not found in specified shape", air.name());
-            }
-            log2_rows
-        })
+        self.shape
+            .as_ref()
+            .map(|shape| {
+                shape
+                    .inner
+                    .get(&air.name())
+                    .unwrap_or_else(|| panic!("Chip {} not found in specified shape", air.name()))
+            })
+            .copied()
     }
 
     /// Determines whether the execution record contains CPU events.
@@ -231,15 +230,23 @@ impl ExecutionRecord {
 
     #[inline]
     /// Add a precompile event to the execution record.
-    pub fn add_precompile_event(&mut self, syscall_code: SyscallCode, event: PrecompileEvent) {
-        self.precompile_events.add_event(syscall_code, event);
+    pub fn add_precompile_event(
+        &mut self,
+        syscall_code: SyscallCode,
+        syscall_event: SyscallEvent,
+        event: PrecompileEvent,
+    ) {
+        self.precompile_events.add_event(syscall_code, syscall_event, event);
     }
 
     /// Get all the precompile events for a syscall code.
     #[inline]
     #[must_use]
-    pub fn get_precompile_events(&self, syscall_code: SyscallCode) -> &Vec<PrecompileEvent> {
-        self.precompile_events.get_events(syscall_code)
+    pub fn get_precompile_events(
+        &self,
+        syscall_code: SyscallCode,
+    ) -> &Vec<(SyscallEvent, PrecompileEvent)> {
+        self.precompile_events.get_events(syscall_code).expect("Precompile events not found")
     }
 
     /// Get all the local memory events.

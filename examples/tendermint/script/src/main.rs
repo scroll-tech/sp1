@@ -19,7 +19,7 @@ fn get_light_blocks() -> (LightBlock, LightBlock) {
     (light_block_1, light_block_2)
 }
 
-fn main() {
+pub fn main() {
     // Generate proof.
     utils::setup_logger();
 
@@ -44,7 +44,7 @@ fn main() {
     let client = ProverClient::new();
     let (pk, vk) = client.setup(TENDERMINT_ELF);
 
-    let execute = client.execute(TENDERMINT_ELF, stdin.clone()).run().expect("proving failed");
+    client.execute(TENDERMINT_ELF, stdin.clone()).run().expect("proving failed");
 
     let proof = client.prove(&pk, stdin).run().expect("proving failed");
 
