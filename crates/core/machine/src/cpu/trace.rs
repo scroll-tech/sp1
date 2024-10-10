@@ -38,8 +38,6 @@ impl<F: PrimeField32> MachineAir<F> for CpuChip {
         input: &ExecutionRecord,
         _: &mut ExecutionRecord,
     ) -> RowMajorMatrix<F> {
-        use sp1_stark::MachineRecord;
-        tracing::error!("zz generate_trace shape {:?}, {:?}", input.shape, input.stats());
         let mut values = zeroed_f_vec(input.cpu_events.len() * NUM_CPU_COLS);
 
         let chunk_size = std::cmp::max(input.cpu_events.len() / num_cpus::get(), 1);
@@ -551,14 +549,7 @@ impl CpuChip {
         let n_real_rows = values.len() / NUM_CPU_COLS;
         let padded_nb_rows = if let Some(shape) = shape {
             let name = MachineAir::<F>::name(self);
-            let log_degree = shape.inner.get(&name);
-            match log_degree {
-                Some(log_degree) => 1 << log_degree,
-                None => {
-                    tracing::error!("shape {:?}", shape);
-                    panic!("fail to get shape of {}", name);
-                }
-            }
+            1 << shape.inner.get(&name).expect(&format!("fail to get shape of {}", name))
         } else if n_real_rows < 16 {
             16
         } else {

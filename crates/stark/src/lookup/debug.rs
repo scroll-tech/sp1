@@ -7,7 +7,7 @@ use p3_matrix::Matrix;
 use super::InteractionKind;
 use crate::{
     air::{InteractionScope, MachineAir},
-    MachineChip, MachineRecord, StarkGenericConfig, StarkMachine, StarkProvingKey, Val,
+    MachineChip, StarkGenericConfig, StarkMachine, StarkProvingKey, Val,
 };
 
 /// The data for an interaction.
@@ -69,7 +69,6 @@ pub fn debug_interactions<SC: StarkGenericConfig, A: MachineAir<Val<SC>>>(
     let mut key_to_vec_data = BTreeMap::new();
     let mut key_to_count = BTreeMap::new();
 
-    tracing::error!("zz debug_interactions {} shape {:?}", chip.name(), record.stats());
     let trace = chip.generate_trace(record, &mut A::Record::default());
     let mut pre_traces = pkey.traces.clone();
     let mut preprocessed_trace =

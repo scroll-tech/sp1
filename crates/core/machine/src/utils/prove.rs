@@ -294,9 +294,7 @@ where
                             if let Some(shape_config) = shape_config {
                                 for record in records.iter_mut() {
                                     tracing::info!("fixing shape");
-                                    tracing::error!("zz fix shape1 from {:?}", record.shape);
                                     shape_config.fix_shape(record).unwrap();
-                                    tracing::error!("zz fix shape1 to {:?}", record.shape);
                                 }
                             }
                             // Generate the traces.
@@ -519,9 +517,7 @@ where
                             // Fix the shape of the records.
                             if let Some(shape_config) = shape_config {
                                 for record in records.iter_mut() {
-                                    tracing::error!("zz fix shape2 from {:?} ", record.shape);
                                     shape_config.fix_shape(record).unwrap();
-                                    tracing::error!("zz fix shape2 from {:?}", record.shape);
                                 }
                             }
 
@@ -678,7 +674,6 @@ where
         #[cfg(feature = "debug")]
         {
             let all_records = all_records_rx.iter().flatten().collect::<Vec<_>>();
-            tracing::error!("zz all records len {}", all_records.len());
             let mut challenger = prover.machine().config().challenger();
             prover.machine().debug_constraints(&pk.to_host(), all_records, &mut challenger);
         }
