@@ -6766,6 +6766,7 @@ dependencies = [
  "elf",
  "enum-map",
  "eyre",
+ "generic-array 1.1.0",
  "hashbrown 0.14.5",
  "hex",
  "itertools 0.13.0",

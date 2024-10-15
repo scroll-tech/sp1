@@ -297,7 +297,6 @@ where
                                     shape_config.fix_shape(record).unwrap();
                                 }
                             }
-
                             // Generate the traces.
                             let mut traces = vec![];
                             tracing::debug_span!("generate traces", index).in_scope(|| {

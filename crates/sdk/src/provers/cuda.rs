@@ -49,6 +49,11 @@ impl Prover<DefaultProverComponents> for CudaProver {
 
         // Generate the core proof.
         let proof = self.cuda_prover.prove_core(pk, &stdin)?;
+
+        {
+            tracing::info!("verify core");
+            self.prover.verify(&proof.proof, &pk.vk).expect("prove core failed");
+        }
         if kind == SP1ProofKind::Core {
             return Ok(SP1ProofWithPublicValues {
                 proof: SP1Proof::Core(proof.proof.0),
@@ -64,6 +69,10 @@ impl Prover<DefaultProverComponents> for CudaProver {
 
         // Generate the compressed proof.
         let reduce_proof = self.cuda_prover.compress(&pk.vk, proof, deferred_proofs)?;
+        {
+            tracing::info!("verify compressed");
+            self.prover.verify_compressed(&reduce_proof, &pk.vk).expect("prove compressed failed");
+        }
         if kind == SP1ProofKind::Compressed {
             return Ok(SP1ProofWithPublicValues {
                 proof: SP1Proof::Compressed(Box::new(reduce_proof)),
@@ -75,9 +84,17 @@ impl Prover<DefaultProverComponents> for CudaProver {
 
         // Generate the shrink proof.
         let compress_proof = self.cuda_prover.shrink(reduce_proof)?;
+        {
+            tracing::info!("verify shrink");
+            self.prover.verify_shrink(&compress_proof, &pk.vk).expect("prove shrink failed");
+        }
 
         // Genenerate the wrap proof.
-        let outer_proof = self.cuda_prover.wrap_bn254(compress_proof)?;
+        let outer_proof = self.prover.wrap_bn254(compress_proof, _opts.sp1_prover_opts)?;
+        {
+            tracing::info!("verify wrap bn254");
+            self.prover.verify_wrap_bn254(&outer_proof, &pk.vk).expect("prove wrap bn254 failed");
+        }
 
         if kind == SP1ProofKind::Plonk {
             let plonk_bn254_aritfacts = if sp1_prover::build::sp1_dev_mode() {

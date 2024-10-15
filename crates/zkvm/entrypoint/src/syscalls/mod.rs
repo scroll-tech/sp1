@@ -141,3 +141,12 @@ pub const BN254_FP2_SUB: u32 = 0x00_01_01_2A;
 
 /// Executes the `BN254_FP2_MUL` precompile.
 pub const BN254_FP2_MUL: u32 = 0x00_01_01_2B;
+
+/// Executes the `MEMCPY_32` precompile
+pub const MEMCPY_32: u32 = 0x00_01_01_90;
+/// Executes the `MEMCPY_64` precompile
+pub const MEMCPY_64: u32 = 0x00_01_01_91;
+/// Executes the `BN254_SCALAR_MUL` precompile
+pub const BN254_SCALAR_MUL: u32 = 0x00_01_01_80;
+/// Executes the `BN254_SCALAR_MAC` precompile
+pub const BN254_SCALAR_MAC: u32 = 0x00_01_01_81;
