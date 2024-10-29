@@ -68,6 +68,13 @@ impl<'a> Runtime<'a> {
             registers[18],
         );
 
+        log::trace!(
+            "[clk: {}, pc: 0x{:x}] {:?}",
+            self.state.global_clk,
+            self.state.pc,
+            instruction,
+        );
+
         if !self.unconstrained && self.state.global_clk % 10_000_000 == 0 {
             log::info!(
                 "clk = {} pc = 0x{:x?}",

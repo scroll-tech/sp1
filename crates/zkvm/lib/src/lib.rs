@@ -83,6 +83,9 @@ extern "C" {
     /// Decompresses a BLS12-381 point.
     pub fn syscall_bls12381_decompress(point: &mut [u8; 96], is_odd: bool);
 
+    pub fn syscall_bn254_scalar_mul(p: *mut u32, q: *const u32);
+    pub fn syscall_bn254_scalar_mac(ret: *mut u32, a: *const u32, b: *const u32);
+
     /// Computes a big integer operation with a modulus.
     pub fn sys_bigint(
         result: *mut [u32; 8],

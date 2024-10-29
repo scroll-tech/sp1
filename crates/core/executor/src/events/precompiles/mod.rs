@@ -1,3 +1,4 @@
+mod bn254_scalar;
 mod ec;
 mod edwards;
 mod fptower;
@@ -6,6 +7,9 @@ mod sha256_compress;
 mod sha256_extend;
 mod uint256;
 
+pub use bn254_scalar::{
+    create_bn254_scalar_arith_event, Bn254FieldArithEvent, Bn254FieldOperation, NUM_WORDS_PER_FE,
+};
 pub use ec::*;
 pub use edwards::*;
 pub use fptower::*;
@@ -19,6 +23,7 @@ pub use uint256::*;
 
 use crate::syscalls::SyscallCode;
 
+use super::{MemCopyEvent};
 use super::{MemoryLocalEvent, SyscallEvent};
 
 #[derive(Clone, Debug, Serialize, Deserialize, EnumIter)]
@@ -52,6 +57,12 @@ pub enum PrecompileEvent {
     Bn254Fp2AddSub(Fp2AddSubEvent),
     /// Bn254 quadratic field mul precompile event.
     Bn254Fp2Mul(Fp2MulEvent),
+
+    Bn254ScalarMac(Bn254FieldArithEvent),
+    Bn254ScalarMul(Bn254FieldArithEvent),
+    MemCopy32(MemCopyEvent),
+    MemCopy64(MemCopyEvent),
+
     /// Bls12-381 curve add precompile event.
     Bls12381Add(EllipticCurveAddEvent),
     /// Bls12-381 curve double precompile event.
@@ -118,6 +129,12 @@ impl PrecompileLocalMemory for Vec<(SyscallEvent, PrecompileEvent)> {
                     iterators.push(e.local_mem_access.iter());
                 }
                 PrecompileEvent::Bls12381Fp2Mul(e) | PrecompileEvent::Bn254Fp2Mul(e) => {
+                    iterators.push(e.local_mem_access.iter());
+                }
+                PrecompileEvent::Bn254ScalarMac(e) | PrecompileEvent::Bn254ScalarMul(e) => {
+                    iterators.push(e.local_mem_access.iter());
+                }
+                PrecompileEvent::MemCopy32(e) | PrecompileEvent::MemCopy64(e) => {
                     iterators.push(e.local_mem_access.iter());
                 }
             }
