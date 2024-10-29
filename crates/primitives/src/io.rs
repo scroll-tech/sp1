@@ -1,7 +1,7 @@
 use crate::types::Buffer;
 use num_bigint::BigUint;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use sha3::{Digest, Keccak256};
 
 /// Public values for the prover.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -54,7 +54,7 @@ impl SP1PublicValues {
 
     /// Hash the public values.
     pub fn hash(&self) -> Vec<u8> {
-        let mut hasher = Sha256::new();
+        let mut hasher = Keccak256::new();
         hasher.update(self.buffer.data.as_slice());
         hasher.finalize().to_vec()
     }
@@ -67,7 +67,7 @@ impl SP1PublicValues {
     /// ```
     pub fn hash_bn254(&self) -> BigUint {
         // Hash the public values.
-        let mut hasher = Sha256::new();
+        let mut hasher = Keccak256::new();
         hasher.update(self.buffer.data.as_slice());
         let hash_result = hasher.finalize();
         let mut hash = hash_result.to_vec();
