@@ -23,7 +23,7 @@ pub use uint256::*;
 
 use crate::syscalls::SyscallCode;
 
-use super::{MemCopyEvent};
+use super::MemCopyEvent;
 use super::{MemoryLocalEvent, SyscallEvent};
 
 #[derive(Clone, Debug, Serialize, Deserialize, EnumIter)]

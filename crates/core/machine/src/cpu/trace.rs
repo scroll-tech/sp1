@@ -551,7 +551,7 @@ impl CpuChip {
             // Write the syscall nonce.
             ecall_cols.syscall_nonce =
                 F::from_canonical_u32(nonce_lookup[event.syscall_lookup_id.0 as usize]);
-            
+
             /*
             log::info!(
                 "populate_ecall syscall_lookup_id {} syscall_nonce {} syscall_id {syscall_id:?}",
@@ -579,5 +579,4 @@ impl CpuChip {
 
         is_halt
     }
-
 }

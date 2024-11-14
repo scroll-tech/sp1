@@ -137,7 +137,7 @@ pub enum SyscallCode {
 
     /// Executes the `SECP256R1_DECOMPRESS` precompile.
     SECP256R1_DECOMPRESS = 0x00_00_01_2E,
-    
+
     /// Execute the `MEMCPY_32` precompile.
     MEMCPY_32 = 0x00_01_01_90,
     /// Execute the `MEMCPY_64` precompile.
