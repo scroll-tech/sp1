@@ -380,13 +380,14 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
     );
     syscall_map
         .insert(SyscallCode::SECP256R1_ADD, Arc::new(WeierstrassAddAssignChip::<Secp256r1>::new()));
-        //.insert(SyscallCode::BN254_DOUBLE, Arc::new(WeierstrassDoubleAssignChip::<Bn254>::new()));
+    syscall_map.insert(
         SyscallCode::SECP256R1_DOUBLE,
         Arc::new(WeierstrassDoubleAssignChip::<Secp256r1>::new()),
-        syscall_map.insert(
+    );
+    syscall_map.insert(
         SyscallCode::SECP256R1_DECOMPRESS,
         Arc::new(WeierstrassDecompressChip::<Secp256r1>::with_lsb_rule()),
-        );
+    );
     syscall_map.insert(SyscallCode::BN254_ADD, Arc::new(WeierstrassAddAssignChip::<Bn254>::new()));
     syscall_map
         .insert(SyscallCode::BN254_DOUBLE, Arc::new(WeierstrassDoubleAssignChip::<Bn254>::new()));
