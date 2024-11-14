@@ -76,6 +76,15 @@ pub enum SyscallCode {
     /// Executes the `SECP256K1_DECOMPRESS` precompile.
     SECP256K1_DECOMPRESS = 0x00_00_01_0C,
 
+    /// Executes the `SECP256R1_ADD` precompile.
+    SECP256R1_ADD = 0x00_01_01_2C,
+
+    /// Executes the `SECP256R1_DOUBLE` precompile.
+    SECP256R1_DOUBLE = 0x00_00_01_2D,
+
+    /// Executes the `SECP256R1_DECOMPRESS` precompile.
+    SECP256R1_DECOMPRESS = 0x00_00_01_2E,
+
     /// Executes the `BN254_ADD` precompile.
     BN254_ADD = 0x00_01_01_0E,
 
@@ -171,6 +180,9 @@ impl SyscallCode {
             0x00_01_01_0A => SyscallCode::SECP256K1_ADD,
             0x00_00_01_0B => SyscallCode::SECP256K1_DOUBLE,
             0x00_00_01_0C => SyscallCode::SECP256K1_DECOMPRESS,
+            0x00_01_01_2C => SyscallCode::SECP256R1_ADD,
+            0x00_00_01_2D => SyscallCode::SECP256R1_DOUBLE,
+            0x00_00_01_2E => SyscallCode::SECP256R1_DECOMPRESS,
             0x00_01_01_0E => SyscallCode::BN254_ADD,
             0x00_00_01_0F => SyscallCode::BN254_DOUBLE,
             0x00_01_01_1E => SyscallCode::BLS12381_ADD,
@@ -366,6 +378,15 @@ pub fn default_syscall_map() -> HashMap<SyscallCode, Arc<dyn Syscall>> {
         SyscallCode::SECP256K1_DECOMPRESS,
         Arc::new(WeierstrassDecompressChip::<Secp256k1>::with_lsb_rule()),
     );
+    syscall_map
+        .insert(SyscallCode::SECP256R1_ADD, Arc::new(WeierstrassAddAssignChip::<Secp256r1>::new()));
+        //.insert(SyscallCode::BN254_DOUBLE, Arc::new(WeierstrassDoubleAssignChip::<Bn254>::new()));
+        SyscallCode::SECP256R1_DOUBLE,
+        Arc::new(WeierstrassDoubleAssignChip::<Secp256r1>::new()),
+        syscall_map.insert(
+        SyscallCode::SECP256R1_DECOMPRESS,
+        Arc::new(WeierstrassDecompressChip::<Secp256r1>::with_lsb_rule()),
+        );
     syscall_map.insert(SyscallCode::BN254_ADD, Arc::new(WeierstrassAddAssignChip::<Bn254>::new()));
     syscall_map
         .insert(SyscallCode::BN254_DOUBLE, Arc::new(WeierstrassDoubleAssignChip::<Bn254>::new()));
@@ -500,8 +521,14 @@ mod tests {
                 SyscallCode::SECP256K1_ADD => {
                     assert_eq!(code as u32, sp1_zkvm::syscalls::SECP256K1_ADD)
                 }
+                SyscallCode::SECP256R1_ADD => {
+                    assert_eq!(code as u32, sp1_zkvm::syscalls::SECP256R1_ADD)
+                }
                 SyscallCode::SECP256K1_DOUBLE => {
                     assert_eq!(code as u32, sp1_zkvm::syscalls::SECP256K1_DOUBLE)
+                }
+                SyscallCode::SECP256R1_DOUBLE => {
+                    assert_eq!(code as u32, sp1_zkvm::syscalls::SECP256R1_DOUBLE)
                 }
                 SyscallCode::BLS12381_ADD => {
                     assert_eq!(code as u32, sp1_zkvm::syscalls::BLS12381_ADD)
@@ -511,6 +538,9 @@ mod tests {
                 }
                 SyscallCode::SECP256K1_DECOMPRESS => {
                     assert_eq!(code as u32, sp1_zkvm::syscalls::SECP256K1_DECOMPRESS)
+                }
+                SyscallCode::SECP256R1_DECOMPRESS => {
+                    assert_eq!(code as u32, sp1_zkvm::syscalls::SECP256R1_DECOMPRESS)
                 }
                 SyscallCode::BN254_ADD => assert_eq!(code as u32, sp1_zkvm::syscalls::BN254_ADD),
                 SyscallCode::BN254_DOUBLE => {
