@@ -7,13 +7,9 @@ fn main() {
     // Setup logging.
     utils::setup_logger();
 
-    // Create an input stream and write '500' to it.
-    let n = 1000u32;
-
     // The input stream that the program will read from using `sp1_zkvm::io::read`. Note that the
     // types of the elements in the input stream must match the types being read in the program.
     let mut stdin = SP1Stdin::new();
-    stdin.write(&n);
 
     // Create a `ProverClient` method.
     let client = ProverClient::new();
@@ -32,7 +28,6 @@ fn main() {
     //
     // Note that this output is read from values committed to in the program using
     // `sp1_zkvm::io::commit`.
-    let _ = proof.public_values.read::<u32>();
     let a = proof.public_values.read::<u32>();
     let b = proof.public_values.read::<u32>();
 
